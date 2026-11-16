@@ -4,6 +4,8 @@
 
 A ground-up rewrite on the Apple Ads Platform API v1. Apple sunsets the Campaign Management API v5, which 1.x used, on 26 January 2027.
 
+Released from the fork [philhar88/apple-ads-cli](https://github.com/philhar88/apple-ads-cli), which exists to keep the tool on Apple's current API. The npm package `apple-ads-cli` is still the original 1.x.
+
 ### Breaking changes
 
 - Every command name and flag changed. Commands are now `<noun> <verb>`, for example `campaigns list` and `reports keywords`.

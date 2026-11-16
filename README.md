@@ -4,26 +4,42 @@ A command-line tool and agent skill for Apple Ads (App Store search ads), built 
 
 It reads accounts, campaigns, ad groups, keywords, negative keywords, creatives, ads, product pages and reports, and it changes them through a dry-run and confirm protocol. Output is JSON on stdout, so scripts and AI agents can parse it directly.
 
-> **Version 2.0 is a rewrite.** Version 1.x used Apple's Campaign Management API v5, which Apple shuts down on **26 January 2027**. Every command name changed. See [Migrating from 1.x](#migrating-from-1x).
+> **This is a fork** of [Bin-Huang/apple-ads-cli](https://github.com/Bin-Huang/apple-ads-cli). It exists to keep the tool working on Apple's current API. The original (1.x) uses the Campaign Management API v5, which Apple shuts down on **26 January 2027**. This fork (2.0) is a rewrite on the Platform API v1. See [About this fork](#about-this-fork).
+
+## About this fork
+
+**Why it exists.** The original apple-ads-cli calls Apple's Campaign Management API v5. Apple replaced that API with the Apple Ads Platform API v1 and shuts v5 down on 26 January 2027. After that date, 1.x stops working. This fork moves the tool to the Platform API, and it will follow Apple's API from here: when Apple releases a new version or sets an end date for the one in use, the fork moves to the new version before that date. [API version](#api-version) names the version in use.
+
+**What changed from the original.**
+
+- Every request uses the Platform API v1 (`https://api.ads.apple.com/v1`) and the ad account ID.
+- The CLI signs in with your API key and refreshes its own access token. 1.x needed a token that you made by hand, which expired after an hour.
+- It can change things, not only read them. Every write has `--dry-run` and needs `--confirm`, and a profile can protect campaigns from writes. See [Safety model](#safety-model).
+- Reports work. The 1.x report commands failed with HTTP 400.
+- Every command name and flag changed. See [Migrating from 1.x](#migrating-from-1x).
+- It has tests, documented exit codes and a rewritten agent skill.
+
+**What stayed the same.** The package name, the command name, the skill name and the Apache-2.0 licence. The same Apple Ads API key works, and campaign IDs carry over.
+
+**Not on npm.** The npm package `apple-ads-cli` is the original 1.x. Install this fork from source, as shown in [Install](#install).
 
 ## Install
 
 Requires Node.js 22 or later.
 
-```bash
-npm install -g apple-ads-cli        # or: pnpm add -g apple-ads-cli
-```
-
-From source:
+Install from source. Don't use `npm install -g apple-ads-cli`: that installs the original 1.x.
 
 ```bash
-git clone https://github.com/Bin-Huang/apple-ads-cli.git
+git clone https://github.com/philhar88/apple-ads-cli.git
 cd apple-ads-cli
 pnpm install        # or: npm install
 pnpm build          # or: npm run build
 pnpm test           # or: npm test (no network)
-node dist/index.js --version
+npm install -g .    # puts apple-ads-cli on your PATH
+apple-ads-cli --version
 ```
+
+To update, run `git pull`, then `pnpm install` and `pnpm build`.
 
 To use the agent skill, copy `skills/apple-ads-cli/` into your agent's skills folder (for Claude Code, `~/.claude/skills/`).
 
@@ -263,11 +279,12 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 - API: Apple Ads Platform API v1, `https://api.ads.apple.com/v1`.
 - The Campaign Management API v5 that 1.x used is sunset on 26 January 2027.
+- When Apple changes the API version, this section, the changelog and [About this fork](#about-this-fork) change in the same commit.
 - Apple docs: [Platform API](https://developer.apple.com/documentation/apple-ads-platform-api), [OAuth](https://developer.apple.com/documentation/apple-ads-platform-api/implementing-oauth-for-the-apple-ads-platform-api), [rate limits](https://developer.apple.com/documentation/apple-ads-platform-api/rate-limits).
 
 ## Credits and changes from upstream
 
-apple-ads-cli was created by [Benn Huang](https://github.com/Bin-Huang/apple-ads-cli) and is licensed under Apache-2.0. Version 2.0 is a modified version: every source file was rewritten in 2026 for the Platform API v1. See [NOTICE](NOTICE) and [CHANGELOG.md](CHANGELOG.md).
+apple-ads-cli was created by [Benn Huang](https://github.com/Bin-Huang/apple-ads-cli) and is licensed under Apache-2.0. This fork, [philhar88/apple-ads-cli](https://github.com/philhar88/apple-ads-cli), is a modified version: every source file was rewritten in 2026 for the Platform API v1. Benn Huang's original is the `upstream` of this repository, and the licence lets it take any of these changes. See [NOTICE](NOTICE) and [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
