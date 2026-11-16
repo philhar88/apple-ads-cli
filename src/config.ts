@@ -1,6 +1,6 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { authError, usageError } from "./errors.js";
 
 export type Env = Record<string, string | undefined>;
@@ -15,6 +15,9 @@ export interface ProfileConfig {
   orgId?: string;
   protectedCampaignIds?: Array<string | number>;
   allowPauseProtected?: boolean;
+  /** Ceilings above which bids and daily budgets need --allow-large (account currency). */
+  maxBid?: string | number;
+  maxDailyBudget?: string | number;
 }
 
 export interface ConfigFile {
@@ -41,6 +44,8 @@ export interface Settings {
   accessToken?: string;
   protectedCampaignIds: string[];
   allowPauseProtected: boolean;
+  maxBid?: string;
+  maxDailyBudget?: string;
   sources: Record<string, Source>;
 }
 
@@ -91,11 +96,14 @@ export function writeConfig(path: string, config: ConfigFile): void {
   writeSecureFile(path, JSON.stringify(config, null, 2) + "\n");
 }
 
-/** Writes a file with mode 600 in a mode-700 directory, atomically. */
+/**
+ * Writes a file with mode 600, atomically. The directory is set to mode 700 only when the CLI
+ * created it or it is the CLI's own apple-ads-cli directory; a user-chosen directory keeps its mode.
+ */
 export function writeSecureFile(path: string, content: string): void {
   const dir = dirname(path);
-  mkdirSync(dir, { recursive: true, mode: 0o700 });
-  chmodSync(dir, 0o700);
+  const created = mkdirSync(dir, { recursive: true, mode: 0o700 });
+  if (created !== undefined || basename(dir) === "apple-ads-cli") chmodSync(dir, 0o700);
   const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
   writeFileSync(tmp, content, { mode: 0o600 });
   chmodSync(tmp, 0o600);
@@ -104,6 +112,11 @@ export function writeSecureFile(path: string, content: string): void {
 
 export function looksLikePem(value: string): boolean {
   return /-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(value) || /^MI[GH][A-Za-z0-9+/]{20,}/.test(value.trim());
+}
+
+/** True when a "path" is really PEM or base64 key text (or anything multi-line). */
+export function isKeyContent(value: string): boolean {
+  return looksLikePem(value) || /[\r\n]/.test(value);
 }
 
 export function resolveProfileName(flags: GlobalFlags, env: Env, config: ConfigFile): { name?: string; source: Source } {
@@ -155,12 +168,26 @@ export function resolveSettings(flags: GlobalFlags, env: Env): Settings {
       value = String(prof[key]);
       src = "config";
     }
+    if (key === "privateKeyPath" && value !== undefined && isKeyContent(value)) {
+      // Never echo the value: it is the key itself.
+      throw authError(
+        `${src === "env" ? envName : "privateKeyPath in the profile"} must be a file path, not the key contents`,
+        "save the key to a file with mode 600 and set the path instead",
+        "KEY_IS_CONTENT",
+      );
+    }
     if (value !== undefined) (s as unknown as Record<string, unknown>)[key] = key === "privateKeyPath" ? expandHome(value, env) : value;
     sources[key] = src;
   }
   if (env.APPLE_ADS_ACCESS_TOKEN) {
     s.accessToken = env.APPLE_ADS_ACCESS_TOKEN;
     sources.accessToken = "env";
+  }
+  for (const [k, envName] of [["maxBid", "APPLE_ADS_MAX_BID"], ["maxDailyBudget", "APPLE_ADS_MAX_DAILY_BUDGET"]] as const) {
+    const v = env[envName] ?? (prof[k] !== undefined ? String(prof[k]) : undefined);
+    if (v === undefined || v === "") continue;
+    if (!/^\d+(\.\d{1,2})?$/.test(v.trim())) throw usageError(`${k} must be an amount such as 10.00 (got "${v}")`, `fix ${envName} or ${k} in the profile`);
+    s[k] = v.trim();
   }
   const fromConfig = (prof.protectedCampaignIds ?? []).map(String);
   const fromEnv = (env.APPLE_ADS_PROTECTED_CAMPAIGN_IDS ?? "").split(",").map((x) => x.trim()).filter(Boolean);

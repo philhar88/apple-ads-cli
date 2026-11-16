@@ -70,9 +70,10 @@ To use the agent skill, copy `skills/apple-ads-cli/` into your agent's skills fo
 | `APPLE_ADS_PROFILE` | Profile name |
 | `APPLE_ADS_CONFIG` | Config file path |
 | `APPLE_ADS_CLIENT_ID`, `APPLE_ADS_TEAM_ID`, `APPLE_ADS_KEY_ID` | Credentials |
-| `APPLE_ADS_PRIVATE_KEY_PATH` | Path to the private key |
+| `APPLE_ADS_PRIVATE_KEY_PATH` | Path to the private key (a path only: key contents are refused, exit 3 `KEY_IS_CONTENT`) |
 | `APPLE_ADS_AD_ACCOUNT_ID` | Ad account (sent as `X-AP-Context: adAccountId=…`) |
 | `APPLE_ADS_PROTECTED_CAMPAIGN_IDS` | Extra protected campaigns, comma-separated (added to the config list) |
+| `APPLE_ADS_MAX_BID`, `APPLE_ADS_MAX_DAILY_BUDGET` | Sanity ceilings (profile keys `maxBid`, `maxDailyBudget`; defaults 10.00 and 1000.00) |
 | `APPLE_ADS_ACCESS_TOKEN` | A ready-made token, used as given with no refresh |
 
 ## Commands
@@ -114,7 +115,7 @@ apple-ads-cli geo search --query "united" --entity Country
 ### Campaigns, ad groups and ads
 
 ```bash
-apple-ads-cli campaigns list [--status ENABLED] [--name text]
+apple-ads-cli campaigns list [--status ENABLED] [--name text]   # --name: substring, any case
 apple-ads-cli campaigns get 111111111
 apple-ads-cli campaigns create --name "Example US Search" --adam-id 1234567890 \
   --daily-budget 5.00 --countries US --end 2027-01-31 --dry-run
@@ -186,7 +187,8 @@ Report rules the CLI checks before sending:
 - `--last Nd` is the N full days before today in the ad account's time zone. Today is excluded.
 - Campaign reports filter on campaign `id`. The other reports need `--campaign-id`.
 - Spans: HOURLY up to 7 days, DAILY up to 90, WEEKLY 14 or more, MONTHLY 90 or more. No HOURLY for ads or search terms, and search terms are ORTZ only.
-- An empty result becomes `rows: []`, missing counts become 0, and Apple's placeholder "Default Ad" rows are dropped unless you pass `--include-default-ads`.
+- An empty result becomes `rows: []`, missing requested counts become 0, and Apple's placeholder "Default Ad" rows are dropped (counted in `pagination.droppedDefaultAds`) unless you pass `--include-default-ads`.
+- `history list --end` is inclusive.
 
 ### Discovery and raw requests
 
@@ -202,16 +204,17 @@ apple-ads-cli api POST /campaigns/query --data '{"pagination":{"offset":0,"pageS
 apple-ads-cli api PUT /adgroups/222222222 --data '{"name":"Example"}' --dry-run
 ```
 
-`api` runs GET and `…/query` requests directly. Any other request is a write and follows the safety model below.
+`api` runs GET and `…/query` requests directly, judged by the URL that is actually sent. Any other request is a write and follows the safety model below. Paths with `#`, `%`, `\` or `.`/`..` segments are refused, and GET takes no body.
 
 ## Safety model
 
 - **Read-only by default.** Nothing changes without `--confirm`. Without it, the command prints the plan and exits 6.
 - **`--dry-run`** prints the exact method, URL, `X-AP-Context` value and JSON body, then exits 0 without sending.
 - **The plan shows the spend effect.** `spend.effect` is `increase`, `decrease`, `none` or `unknown`, with reasons. Bid changes over 15% and budget changes over 20% are flagged `largeStep`. Campaign plans include Apple's ceilings: monthly spend can reach the daily budget × 30.4, and a scheduled campaign can spend up to days × daily budget.
+- **Sanity ceilings.** A bid above `maxBid` (default 10.00) or a daily budget above `maxDailyBudget` (default 1000.00), in the account currency, exits 6 `ABOVE_CEILING` unless you pass `--allow-large`. Set both in the profile for currencies with larger units, such as JPY.
 - **Safe defaults.** New campaigns, ad groups and ads are created PAUSED. New negatives default to EXACT match. Deletes also need `--force-delete`.
-- **Protected campaigns.** Add campaign IDs to `protectedCampaignIds` in a profile (or `auth setup --protect <id>`). Any write to such a campaign, or to anything under it, exits 6 before it is sent. Set `allowPauseProtected: true` to let pauses and new negatives through.
-- **Verification.** After sending, the CLI reads the entities again and prints `after`, with `status`, `systemStatus` and `displayStatus`.
+- **Protected campaigns.** Add campaign IDs to `protectedCampaignIds` in a profile (or `auth setup --protect <id>`). Any write to such a campaign, or to anything under it (including a creative used by one of its ads), exits 6 before it is sent. Set `allowPauseProtected: true` to let pauses and new negatives through.
+- **Verification.** After sending, the CLI reads the entities again and prints `after`, with `status`, `systemStatus`, `displayStatus` and the changed bid or budget. A bulk write that Apple does not confirm item by item exits 1 `BULK_UNCONFIRMED`.
 - **Secrets.** Tokens, the client secret and the key never appear in output or `--debug` logs.
 
 ## Exit codes

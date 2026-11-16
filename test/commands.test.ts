@@ -45,7 +45,7 @@ const CASES: Case[] = [
   { argv: ["budget-orders", "list"], routes: { "POST /shared-budgets/query": list([]) }, method: "POST", path: "/shared-budgets/query", body: { pagination: { offset: 0, pageSize: 1000, fetchTotalCount: true } } },
   { argv: ["budget-orders", "get", "777777777"], routes: { "GET /shared-budgets/777777777": ok({}) }, method: "GET", path: "/shared-budgets/777777777" },
   // campaigns
-  { argv: ["campaigns", "list", "--status", "enabled", "--name", "Example", "--sort", "name", "--fields", "name,status"], routes: { "POST /campaigns/query": list([CAMPAIGN]) }, method: "POST", path: "/campaigns/query", body: { filters: [eq("status", "ENABLED"), { field: "name", operator: "LIKE", value: ["Example"] }], sorting: [{ field: "name", order: "ASC" }], fields: ["id", "name", "status"], pagination: { offset: 0, pageSize: 1000, fetchTotalCount: true } } },
+  { argv: ["campaigns", "list", "--status", "enabled", "--name", "Example", "--sort", "name", "--fields", "name,status"], routes: { "POST /campaigns/query": list([CAMPAIGN]) }, method: "POST", path: "/campaigns/query", body: { filters: [eq("status", "ENABLED"), { field: "name", operator: "LIKE", value: ["Example"], ignoreCase: true }], sorting: [{ field: "name", order: "ASC" }], fields: ["id", "name", "status"], pagination: { offset: 0, pageSize: 1000, fetchTotalCount: true } } },
   { argv: ["campaigns", "get", "111111111"], routes: R.campaign, method: "GET", path: "/campaigns/111111111" },
   { argv: ["campaigns", "create", "--name", "Example New", "--adam-id", "1234567890", "--daily-budget", "2", "--countries", "us,gb", "--start", "2027-01-01", "--confirm"], routes: { "POST /campaigns/query": list([]), "POST /campaigns": ok({ id: 111111112 }), "GET /campaigns/111111112": ok(CAMPAIGN) }, method: "POST", path: "/campaigns", body: { name: "Example New", adAccountId: 123456789, billingEvent: "TAPS", promotedObjectType: "APPSTORE_APP", promotedObjectId: "1234567890", dailyBudget: { value: { amount: "2.00", currency: "USD" } }, targeting: { supplySource: { include: ["APPSTORE"] }, supplyPlacement: { include: ["APPSTORE_SEARCH_RESULTS"] }, countryOrRegion: { include: ["US", "GB"] } }, bidStrategy: { bidStrategyType: "MANUAL_CPT", bidStrategyGoal: "TAP" }, startTime: "2027-01-01T00:00:00.000", status: "PAUSED" } },
   { argv: ["campaigns", "update", "111111111", "--name", "Renamed", "--end", "2027-01-31", "--confirm"], routes: { ...R.campaign, "PUT /campaigns/111111111": ok(CAMPAIGN) }, method: "PUT", path: "/campaigns/111111111", body: { name: "Renamed", endTime: "2027-01-31T23:59:59.000" } },
@@ -104,6 +104,24 @@ const CASES: Case[] = [
   { argv: ["api", "POST", "/campaigns/query", "--data", '{"pagination":{"offset":0,"pageSize":1}}'], routes: { "POST /campaigns/query": list([]) }, method: "POST", path: "/campaigns/query", body: { pagination: { offset: 0, pageSize: 1 } } },
   { argv: ["api", "PUT", "/adgroups/222222222", "--data", '{"name":"x"}', "--confirm"], routes: { "PUT /adgroups/222222222": ok({}) }, method: "PUT", path: "/adgroups/222222222", body: { name: "x" } },
 ];
+
+// Every write case once more without --confirm (refused, exit 6) and with --dry-run instead (exit 0): no write is sent.
+for (const c of CASES.filter((x) => x.argv.includes("--confirm"))) {
+  const without = c.argv.filter((a) => a !== "--confirm");
+  test(`${without.join(" ")} (no --confirm) sends nothing`, async () => {
+    const r = await cli(without, { routes: c.routes });
+    assert.equal(r.code, 6, `exit ${r.code}: ${r.stderr}`);
+    assert.ok(["CONFIRM_REQUIRED", "FORCE_DELETE_REQUIRED"].includes(r.err().error.code), r.stderr);
+    assert.deepEqual(r.mock.writes(), []);
+  });
+  const dry = c.argv.map((a) => (a === "--confirm" ? "--dry-run" : a));
+  test(`${dry.join(" ")} sends nothing`, async () => {
+    const r = await cli(dry, { routes: c.routes });
+    assert.equal(r.code, 0, `exit ${r.code}: ${r.stderr}`);
+    assert.equal(r.json().dryRun, true);
+    assert.deepEqual(r.mock.writes(), []);
+  });
+}
 
 for (const c of CASES) {
   test(c.argv.join(" "), async () => {

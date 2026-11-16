@@ -27,9 +27,13 @@ Every command prints one JSON document on stdout. Add `--output table` for a tab
 | `--debug` | Requests and responses on stderr, secrets redacted |
 | `--timeout S` | Request timeout in seconds (default 60) |
 
-List flags, on every `list`, report and insight: `--limit N` (default 1000; 5000 for reports), `--all`, `--max-items N`, `--offset N`, `--sort field[:ASC|DESC]` (repeatable), `--filter field:OPERATOR[:v1,v2]` (repeatable; `IS_NULL` takes no value), and on entity lists `--fields a,b` and `--deleted`.
+List flags, on every `list`, report and insight: `--limit N` (default 1000; 5000 for reports), `--all`, `--max-items N`, `--offset N`, `--sort field[:ASC|DESC]` (repeatable), `--filter field:OPERATOR[:v1,v2]` (repeatable; `IS_NULL` takes no value), and on entity lists `--fields a,b` and `--deleted`. `product-pages list` has no `--deleted`; `insights keyword-suggestions` has no `--sort`, `--fields` or `--deleted` (Apple sorts nothing there).
 
-Write flags: `--dry-run`, `--confirm`, `--data JSON` / `--file PATH` (merged under the flags; flags win), and `--force-delete` on deletes.
+Write flags:
+
+- `--dry-run` and `--confirm` on every write; `--force-delete` as well on deletes.
+- `--data JSON` / `--file PATH` (a body overlay merged under the flags; flags win) on campaigns, ad groups, creatives and ads create/update. On `keywords add`, `negatives add` and `keywords update`, `--file` is the keyword or update list, and there is no `--data`.
+- `--allow-large` on campaigns and ad groups create/update, `keywords add`/`update` and `api`: needed to send a bid above `maxBid` (default 10.00) or a daily budget above `maxDailyBudget` (default 1000.00), in the account currency. Without it the write exits 6 `ABOVE_CEILING`. Set `maxBid`/`maxDailyBudget` in the profile (or `APPLE_ADS_MAX_BID`/`APPLE_ADS_MAX_DAILY_BUDGET`) for currencies with larger units.
 
 ## Setup and account
 
@@ -54,7 +58,7 @@ apple-ads-cli apps search --query "example app" [--storefront US] [--limit 20]
 apple-ads-cli apps get APP_ID
 apple-ads-cli apps eligibility APP_ID [--country US] [--placement APPSTORE_SEARCH_RESULTS] [--state ELIGIBLE]
 apple-ads-cli apps locales APP_ID [--language-code en-US]
-apple-ads-cli product-pages list --adam-id APP_ID [--state VISIBLE]
+apple-ads-cli product-pages list --adam-id APP_ID [--state VISIBLE] [--sort name:ASC] [--fields name,state]
 apple-ads-cli product-pages get PRODUCT_PAGE_ID
 apple-ads-cli geo search --query "united" [--entity Country|AdminArea|Locality|PostalCode] [--country-code us]
 ```
@@ -76,7 +80,7 @@ apple-ads-cli campaigns delete CAMPAIGN_ID --confirm --force-delete
 - Each campaign row gains `cli.budget`: `daily`, `monthlyMax` (daily × 30.4), `scheduleMax` (days × daily when there is an end date) and `daysLeft`.
 - `create` sends PAUSED unless `--status ENABLED`. Times are UTC. The currency comes from the ad account.
 - `update --countries` replaces the whole list.
-- `--name` on `list` is a substring match.
+- `--name` on `list` is a substring match in any case (LIKE with `ignoreCase`).
 
 ## Ad groups
 
@@ -159,13 +163,16 @@ See `reports.md` for the rules.
 ```bash
 apple-ads-cli reports campaigns [--campaign-id ID…] [--last 7d | --start DATE --end DATE] [--granularity DAILY] [--group-by countryOrRegion]
 apple-ads-cli reports ad-groups|keywords|search-terms|ads --campaign-id ID [--ad-group-id ID] [range flags]
-apple-ads-cli insights impression-share --adam-id APP_ID [--country US] [--granularity DAILY|WEEKLY_SUN_SAT] [--slots first|all] [--last 14d]
+apple-ads-cli insights impression-share --adam-id APP_ID [--country US] [--slots first|all] [--last 14d]
+apple-ads-cli insights impression-share --adam-id APP_ID --granularity WEEKLY_SUN_SAT --start SUNDAY --end SATURDAY
 apple-ads-cli insights keyword-suggestions --adam-id APP_ID [--term TEXT] [--country US]
 apple-ads-cli history list [--since 7d | --start DATE --end DATE] [--campaign-id ID] [--ad-group-id ID] [--entity-type Keyword] [--event-type UPDATE]
 apple-ads-cli history get DETAIL_ID
 ```
 
-`history list` rows carry `metas[].detailId` for `history get`.
+- `history list` rows carry `metas[].detailId` for `history get`. `--end` is inclusive (the CLI sends the next day, because Apple reads the end date as 00:00).
+- With `--campaign-id` or `--ad-group-id` the CLI runs two queries, merges them newest first, then applies `--offset` and `--limit`.
+- `impression-share` with WEEKLY_SUN_SAT needs `--start` on a Sunday; `--last` rarely lands on one.
 
 ## Schema and raw API
 
@@ -176,4 +183,4 @@ apple-ads-cli api POST /resource/query --data '{"filters":[…],"pagination":{"o
 apple-ads-cli api PUT|POST|DELETE /path --data '{…}' --dry-run
 ```
 
-Raw writes need `--confirm` and pass the protected-campaign guard. Their spend effect is always `unknown`.
+Raw writes need `--confirm` and pass the protected-campaign guard (including `/creatives/{id}`, through the ads that use the creative). Their spend effect is `unknown` unless a bid or budget is above the ceiling. Paths may contain only letters, digits and `- . _ ~ /`: `#`, `%`, `\` and `.`/`..` segments are refused (exit 2); pass parameters with `--query`. `GET` takes no body.

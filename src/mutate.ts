@@ -3,7 +3,8 @@ import { isNoContextPath } from "./constants.js";
 import { CliError, ExitCode, refused, toCliError } from "./errors.js";
 import { assertNotProtected, type Target } from "./guard.js";
 import { buildUrl } from "./http.js";
-import type { Spend } from "./spend.js";
+import { ceilingReasons, findOverCeiling, resolveCeilings } from "./ceilings.js";
+import { combine, type Spend } from "./spend.js";
 
 export interface Step {
   method: string;
@@ -36,6 +37,7 @@ export interface WriteFlags {
   dryRun?: boolean;
   confirm?: boolean;
   forceDelete?: boolean;
+  allowLarge?: boolean;
 }
 
 export interface ItemResult {
@@ -64,6 +66,9 @@ async function describeSteps(ctx: Ctx, steps: Step[]) {
 /** Runs the write protocol: guard, dry run or confirm, send, verify. */
 export async function runPlan(ctx: Ctx, plan: Plan, flags: WriteFlags): Promise<void> {
   assertNotProtected(plan.targets, ctx.settings, !!plan.reduceOnly);
+  const ceilings = resolveCeilings(ctx.settings);
+  const overCeiling = plan.steps.flatMap((s) => findOverCeiling(s.body, ceilings));
+  if (overCeiling.length) plan = { ...plan, spend: combine([...plan.spend.reasons, ...ceilingReasons(overCeiling)], plan.spend.ceilings) };
   const shown = {
     action: plan.action,
     steps: await describeSteps(ctx, plan.steps),
@@ -82,9 +87,19 @@ export async function runPlan(ctx: Ctx, plan: Plan, flags: WriteFlags): Promise<
     return;
   }
   if (flags.dryRun) {
-    ctx.out.emit({ dryRun: true, sent: false, ...base });
+    ctx.out.emit({ dryRun: true, sent: false, ...base, ...(overCeiling.length ? { overCeiling } : {}) });
+    if (overCeiling.length && !flags.allowLarge) ctx.out.note(`${overCeiling.length} amount(s) are above the ceiling; --confirm will need --allow-large`);
     ctx.out.note(`dry run: ${plan.steps.length} request(s) not sent; spend effect: ${plan.spend.effect}`);
     return;
+  }
+  if (overCeiling.length && !flags.allowLarge) {
+    ctx.out.emit({ dryRun: false, sent: false, ...base, overCeiling });
+    const h = overCeiling[0]!;
+    throw refused(
+      "ABOVE_CEILING",
+      `${h.path} ${h.amount} is above the ${h.field === "bid" ? "maxBid" : "maxDailyBudget"} ceiling ${h.ceiling}; nothing was sent`,
+      "check the amount (a typo such as 60 for 0.60?); if it is right, re-run with --allow-large, or raise maxBid/maxDailyBudget in the profile",
+    );
   }
   if (plan.destructive && !flags.forceDelete) {
     ctx.out.emit({ dryRun: false, sent: false, ...base });
@@ -101,10 +116,20 @@ export async function runPlan(ctx: Ctx, plan: Plan, flags: WriteFlags): Promise<
     try {
       const res = await ctx.client.request({ method: s.method, path: s.path, body: s.body, retry: "write", context: s.context });
       if (s.bulk) {
-        const items: any[] = Array.isArray(res.json?.result) ? res.json.result : [];
+        const isArr = Array.isArray(res.json?.result);
+        const items: any[] = isArr ? res.json.result : [];
         if (!items.length && res.json?.error) throw new CliError({ exitCode: ExitCode.API, code: "BULK_FAILED", message: JSON.stringify(res.json.error) });
         for (const it of items) {
           results.push({ step: i, index: it?.correlationId, ok: it?.success === true, id: it?.result?.id, ...(it?.success === true ? {} : { error: it?.error }) });
+        }
+        const sentItems = Array.isArray((s.body as any)?.items) ? (s.body as any).items.length : 0;
+        if (!isArr || items.length < sentItems) {
+          throw new CliError({
+            exitCode: ExitCode.API,
+            code: "BULK_UNCONFIRMED",
+            message: `bulk request sent ${sentItems} item(s) but Apple confirmed ${items.length}; the outcome of the rest is unknown`,
+            hint: "list the parent ad group or campaign and check each item before retrying",
+          });
         }
       } else {
         results.push({ step: i, ok: true, status: res.status, id: res.json?.result?.id });

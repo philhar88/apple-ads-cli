@@ -24,6 +24,22 @@ A ground-up rewrite on the Apple Ads Platform API v1. Apple sunsets the Campaign
 - A rewritten agent skill with reference files.
 - Tests (`node:test`, no network).
 
+### Safety hardening (before release)
+
+- Raw `api`: reads are classified by the URL that is actually sent; paths with `#`, `%`, `\` or dot segments are refused (exit 2); GET with a body is a usage error; protected IDs match with leading zeros; `/creatives/{id}` writes resolve the campaigns of the ads that use the creative.
+- A private key path setting that holds the key itself is refused without echoing it (exit 3 `KEY_IS_CONTENT`).
+- Bulk writes that Apple does not confirm item by item exit 1 `BULK_UNCONFIRMED` instead of reporting success.
+- `after` keeps the bid (keywords, ad groups) so a change can be checked.
+- Bids above `maxBid` and daily budgets above `maxDailyBudget` (defaults 10.00 and 1000.00) need `--allow-large` (exit 6 `ABOVE_CEILING`).
+- `campaigns update`/`ad-groups update` assess `--data` keys (status, Search Match, budget, bid, end date, countries) like their flags; `keywords add` assesses per-item status.
+- `history list --end` is inclusive; with `--campaign-id`/`--ad-group-id`, `--offset` and `--limit` apply to the merged list.
+- `--name` on `campaigns list` and `ad-groups list` ignores case.
+- Reports zero-fill only the requested metrics; `pagination.returned` matches the rows after Default Ad rows are dropped.
+- `product-pages list` and `apps eligibility` send `--sort` (and `--fields` on product pages). Flags an endpoint cannot use are no longer accepted: `--deleted` on `product-pages list`, and `--sort`, `--fields` and `--deleted` on `insights keyword-suggestions`.
+- Paging follows server-capped pages to `totalCount`.
+- `auth setup` leaves the mode of a user-chosen config directory alone.
+- The npm package never includes `skills/*/references/local.md`.
+
 ### Migrating from 1.x
 
 | 1.x | 2.0 |

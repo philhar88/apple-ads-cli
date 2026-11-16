@@ -2,7 +2,7 @@ import type { Command } from "commander";
 import { act, type Deps } from "../context.js";
 import { usageError } from "../errors.js";
 import { PAGE_MAX_ENTITY } from "../constants.js";
-import { filter, paginate, type Filter } from "../query.js";
+import { buildQuery, filter, paginate, parseFields, parseSort, type Filter } from "../query.js";
 import { addListFlags, doc, extraFilters, idArg, listOpts, truncationNote } from "./shared.js";
 
 const collect = (v: string, prev: string[] = []) => [...prev, v];
@@ -62,7 +62,8 @@ export function registerApps(program: Command, deps: Deps): void {
         if (o.placement) f.push(filter("supplyPlacement", "EQUALS", o.placement.toUpperCase()));
         if (o.state) f.push(filter("state", "EQUALS", o.state.toUpperCase()));
         f.push(...extraFilters(o));
-        const page = await paginate(ctx.client, { path: "/eligibilities/apps/query", body: { filters: f }, pageMax: PAGE_MAX_ENTITY, ...listOpts(o, "report") });
+        const body = buildQuery({ filters: f, sorting: (o.sort ?? []).map(parseSort) }) as Record<string, unknown>;
+        const page = await paginate(ctx.client, { path: "/eligibilities/apps/query", body, pageMax: PAGE_MAX_ENTITY, ...listOpts(o, "report") });
         ctx.out.emit({ result: page.rows, pagination: page.pagination }, [
           { header: "country", path: "countryOrRegion" },
           { header: "placement", path: "supplyPlacement" },
@@ -92,7 +93,7 @@ export function registerApps(program: Command, deps: Deps): void {
   );
 
   const pp = program.command("product-pages").description("Product pages (default, custom and optimisation pages)");
-  const ppList = addListFlags(pp.command("list").description("List an app's product pages"), "entity")
+  const ppList = addListFlags(pp.command("list").description("List an app's product pages"), "entity", { deleted: false })
     .requiredOption("--adam-id <id>", "App Store app ID", idArg("--adam-id"))
     .option("--state <state>", "VISIBLE or HIDDEN")
     .action(
@@ -100,7 +101,8 @@ export function registerApps(program: Command, deps: Deps): void {
         const f: Filter[] = [filter("adamId", "EQUALS", o.adamId)];
         if (o.state) f.push(filter("state", "EQUALS", o.state.toUpperCase()));
         f.push(...extraFilters(o));
-        const page = await paginate(ctx.client, { path: "/product-pages/query", body: { filters: f }, pageMax: PAGE_MAX_ENTITY, ...listOpts(o, "entity") });
+        const body = buildQuery({ filters: f, sorting: (o.sort ?? []).map(parseSort), fields: parseFields(o.fields) }) as Record<string, unknown>;
+        const page = await paginate(ctx.client, { path: "/product-pages/query", body, pageMax: PAGE_MAX_ENTITY, ...listOpts(o, "entity") });
         ctx.out.emit({ result: page.rows, pagination: page.pagination }, [
           { header: "id", path: "id" },
           { header: "name", path: "name" },

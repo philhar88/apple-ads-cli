@@ -97,20 +97,27 @@ export function buildReportBody(kind: ReportKind, o: ReportOpts, today: string):
   return { body, start, end, timeZone };
 }
 
-function zeroCounts(m: any): any {
+/** The count metrics to zero-fill: the requested --metrics that are counts, else every count metric. */
+export function countMetricsFor(metrics?: string): string[] {
+  if (!metrics) return COUNT_METRICS;
+  const asked = metrics.split(",").map((s) => s.trim());
+  return COUNT_METRICS.filter((k) => asked.includes(k));
+}
+
+function zeroCounts(m: any, counts: string[] = COUNT_METRICS): any {
   if (!m || typeof m !== "object") return m;
   const out = { ...m };
-  for (const k of COUNT_METRICS) if (out[k] === undefined || out[k] === null) out[k] = 0;
+  for (const k of counts) if (out[k] === undefined || out[k] === null) out[k] = 0;
   return out;
 }
 
-/** Empty result -> [], missing counts -> 0, Default Ad rows dropped, low-volume flagged. */
-export function normalizeRows(kind: ReportKind, rows: any[], includeDefaultAds = false): any[] {
+/** Empty result -> [], missing requested counts -> 0, Default Ad rows dropped, low-volume flagged. */
+export function normalizeRows(kind: ReportKind, rows: any[], includeDefaultAds = false, counts: string[] = COUNT_METRICS): any[] {
   const out: any[] = [];
   for (const row of rows ?? []) {
     const r = { ...row };
-    if (r.totalMetrics) r.totalMetrics = zeroCounts(r.totalMetrics);
-    if (Array.isArray(r.granularMetrics)) r.granularMetrics = r.granularMetrics.map(zeroCounts);
+    if (r.totalMetrics) r.totalMetrics = zeroCounts(r.totalMetrics, counts);
+    if (Array.isArray(r.granularMetrics)) r.granularMetrics = r.granularMetrics.map((g: any) => zeroCounts(g, counts));
     const cli: Record<string, unknown> = {};
     if (kind === "ads" && Number(r.metadata?.id) === -1) {
       if (!includeDefaultAds) continue;
@@ -167,16 +174,19 @@ function registerReport(g: Command, deps: Deps, kind: ReportKind, description: s
       for (const id of campaignIds ?? []) if (!/^\d+$/.test(id)) throw usageError(`--campaign-id must be numeric (got "${id}")`);
       const built = buildReportBody(kind, { ...o, campaignIds }, today);
       const page = await paginate(ctx.client, { path: REPORT_PATH[kind], body: built.body, pageMax: PAGE_MAX_REPORT, rows: (j) => j?.result?.rows ?? [], ...listOpts(o, "report") });
-      const rows = normalizeRows(kind, page.rows as any[], !!o.includeDefaultAds);
+      const counts = countMetricsFor(o.metrics);
+      const rows = normalizeRows(kind, page.rows as any[], !!o.includeDefaultAds, counts);
+      const dropped = page.rows.length - rows.length;
+      const pagination = { ...page.pagination, returned: rows.length, ...(kind === "ads" && dropped ? { droppedDefaultAds: dropped } : {}) };
       const grandTotal = page.first?.result?.summary?.grandTotal;
       const provisionalStart = addDays(today, -2);
       const account = await ctx.account().catch(() => ({}));
       const result: Record<string, unknown> = { rows };
-      if (grandTotal) result.grandTotal = zeroCounts(grandTotal);
+      if (grandTotal) result.grandTotal = zeroCounts(grandTotal, counts);
       ctx.out.emit(
         {
           result,
-          pagination: page.pagination,
+          pagination,
           cli: {
             report: kind,
             timeRange: { start: built.start, end: built.end },

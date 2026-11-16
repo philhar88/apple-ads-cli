@@ -81,17 +81,17 @@ export function validateGranularity(g: Granularity | undefined, start: string, e
   switch (g) {
     case "HOURLY":
       if (kind === "ads" || kind === "search-terms") throw usageError(`HOURLY is not supported for ${kind} reports`, "use DAILY or omit --granularity");
-      if (span > 7) throw usageError(`HOURLY needs a span of 7 days or less (got ${span})`);
-      if (daysBetweenInclusive(start, today) > 366) throw usageError("HOURLY needs a start date within the last 365 days");
+      if (span > 7) throw usageError(`HOURLY needs a span of 7 days or less (got ${span})`, "use --last 7d or less, or --granularity DAILY");
+      if (daysBetweenInclusive(start, today) > 366) throw usageError("HOURLY needs a start date within the last 365 days", "move --start later, or use --granularity DAILY");
       return;
     case "DAILY":
       if (span > 90) throw usageError(`DAILY needs a span of 90 days or less (got ${span})`, "use --granularity WEEKLY or a shorter range");
       return;
     case "WEEKLY":
-      if (span < 14) throw usageError(`WEEKLY needs a span of 14 days or more (got ${span})`);
+      if (span < 14) throw usageError(`WEEKLY needs a span of 14 days or more (got ${span})`, "use --last 14d or more, or --granularity DAILY");
       return;
     case "MONTHLY":
-      if (span < 90) throw usageError(`MONTHLY needs a span of 90 days or more (got ${span})`);
+      if (span < 90) throw usageError(`MONTHLY needs a span of 90 days or more (got ${span})`, "use --last 90d or more, or --granularity WEEKLY");
       return;
     default:
       throw usageError(`Unknown granularity ${g as string}`, "use HOURLY, DAILY, WEEKLY or MONTHLY");

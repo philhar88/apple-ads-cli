@@ -66,10 +66,20 @@ test("pager stops at --limit and reports truncated + nextOffset", async () => {
   assert.deepEqual(r.pagination, { offset: 0, returned: 3, totalCount: 10, truncated: true, nextOffset: 3 });
 });
 
-test("a short page ends paging even when totalCount overstates (ads report quirk)", async () => {
-  const { client } = pager([{ rows: 10, totalCount: 15 }]);
+test("a short page with rows left asks once more; an empty page ends it (ads report quirk)", async () => {
+  const { client, m } = pager([{ rows: 10, totalCount: 15 }, { rows: 0, totalCount: 15 }]);
   const r = await paginate(client, { path: "/keywords/query", body: {}, pageMax: 5000, limit: 5000, all: false, offset: 0 });
+  assert.equal(r.rows.length, 10);
   assert.equal(r.pagination.truncated, false);
+  assert.deepEqual(m.calls.map((c) => c.body.pagination.offset), [0, 10]);
+});
+
+test("server-capped page sizes are followed to totalCount, not mistaken for the end", async () => {
+  const { client, m } = pager([{ rows: 200, totalCount: 450 }, { rows: 200, totalCount: 450 }, { rows: 50, totalCount: 450 }]);
+  const r = await paginate(client, { path: "/keywords/query", body: {}, pageMax: 1000, limit: 1000, all: false, offset: 0 });
+  assert.equal(r.rows.length, 450);
+  assert.equal(r.pagination.truncated, false);
+  assert.equal(m.calls.length, 3);
 });
 
 test("--all follows pages up to maxItems", async () => {

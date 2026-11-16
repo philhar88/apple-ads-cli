@@ -2,7 +2,7 @@ import type { Command } from "commander";
 import { act, type Deps } from "../context.js";
 import { PAGE_MAX_ENTITY, PAGE_MAX_REPORT } from "../constants.js";
 import { usageError } from "../errors.js";
-import { filter, paginate, parseFilterFlag, parseSort, type Filter, type Pagination } from "../query.js";
+import { buildQuery, filter, paginate, parseFilterFlag, parseSort, type Filter, type Pagination } from "../query.js";
 import { addDays, dateIn, daysBetweenInclusive, resolveRange } from "../time.js";
 import { addListFlags, doc, extraFilters, idArg, listOpts, truncationNote } from "./shared.js";
 
@@ -13,10 +13,13 @@ export function buildImpressionShareBody(o: any, todayUtc: string): Record<strin
   if (granularity !== "DAILY" && granularity !== "WEEKLY_SUN_SAT") throw usageError("--granularity must be DAILY or WEEKLY_SUN_SAT");
   const { start, end } = resolveRange({ last: o.last, start: o.start, end: o.end }, todayUtc);
   const span = daysBetweenInclusive(start, end);
-  if (granularity === "DAILY" && span > 30) throw usageError(`impression share DAILY allows 30 days at most (got ${span})`);
+  if (granularity === "DAILY" && span > 30) throw usageError(`impression share DAILY allows 30 days at most (got ${span})`, "use --last 30d or less, or --granularity WEEKLY_SUN_SAT with --start/--end");
   if (granularity === "WEEKLY_SUN_SAT") {
-    if (span > 28) throw usageError(`impression share WEEKLY_SUN_SAT allows 4 weeks at most (got ${span} days)`);
-    if (new Date(`${start}T00:00:00Z`).getUTCDay() !== 0) throw usageError("WEEKLY_SUN_SAT ranges must start on a Sunday");
+    // The two most recent full Sunday-Saturday weeks before today (UTC), as a working example.
+    const sun = addDays(todayUtc, -new Date(`${todayUtc}T00:00:00Z`).getUTCDay() - 14);
+    const example = `--start ${sun} --end ${addDays(sun, 13)}`;
+    if (span > 28) throw usageError(`impression share WEEKLY_SUN_SAT allows 4 weeks at most (got ${span} days)`, `use --start <a Sunday> --end <a Saturday>, e.g. ${example}`);
+    if (new Date(`${start}T00:00:00Z`).getUTCDay() !== 0) throw usageError(`WEEKLY_SUN_SAT ranges must start on a Sunday (${start} is not)`, `use --start <a Sunday> --end <a Saturday> instead of --last, e.g. ${example}`);
   }
   const slots = (o.slots ?? "first").toLowerCase();
   if (slots !== "first" && slots !== "all") throw usageError("--slots must be first or all");
@@ -54,7 +57,7 @@ export function registerInsights(program: Command, deps: Deps): void {
     );
   doc(is, { endpoint: "POST /v1/insights/apps/impression-share/query", schema: "ImpressionShareQueryRequest", examples: ["apple-ads-cli insights impression-share --adam-id 1234567890 --country US --last 14d"] });
 
-  const ks = addListFlags(g.command("keyword-suggestions").description("Keyword ideas for an app"), "entity")
+  const ks = addListFlags(g.command("keyword-suggestions").description("Keyword ideas for an app"), "entity", { fields: false, deleted: false, sort: false })
     .requiredOption("--adam-id <id>", "App Store app ID", idArg("--adam-id"))
     .option("--term <text>", "seed terms (repeatable or comma-separated)", collect)
     .option("--country <codes>", "country or region codes (repeatable or comma-separated)", collect)
@@ -64,7 +67,8 @@ export function registerInsights(program: Command, deps: Deps): void {
         if (o.term?.length) f.push(filter("terms", "IN", o.term));
         if (o.country?.length) f.push(filter("countriesOrRegions", "IN", o.country.map((c: string) => c.toUpperCase())));
         f.push(...(o.filter ?? []).map(parseFilterFlag));
-        const page = await paginate(ctx.client, { path: "/suggestions/keywords/query", body: { filters: f }, pageMax: PAGE_MAX_ENTITY, ...listOpts(o, "entity") });
+        // No --sort: Apple answers "Field ... is not queryable" for text and popularity.
+        const page = await paginate(ctx.client, { path: "/suggestions/keywords/query", body: buildQuery({ filters: f }) as Record<string, unknown>, pageMax: PAGE_MAX_ENTITY, ...listOpts(o, "entity") });
         ctx.out.emit({ result: page.rows, pagination: page.pagination }, [
           { header: "text", path: "text" },
           { header: "popularity", path: "popularity" },
@@ -99,11 +103,12 @@ export function registerHistory(program: Command, deps: Deps): void {
           const m = /^(\d{1,3})d$/.exec(o.since ?? "7d");
           if (!m) throw usageError("--since takes Nd, for example 7d");
           start = addDays(today, -Number(m[1]));
-          end = addDays(today, 1);
+          end = today;
         }
+        // Apple reads the end date as 00:00 at its start, so send the next day to include the whole end date.
         if (daysBetweenInclusive(start, today) > 184) throw usageError("history reaches back 6 months at most");
         const types: string[] = o.entityType?.length ? o.entityType : DEFAULT_ENTITY_TYPES;
-        const common: Filter[] = [filter("eventTime", "BETWEEN", [start, end])];
+        const common: Filter[] = [filter("eventTime", "BETWEEN", [start, addDays(end, 1)])];
         if (o.eventType?.length) common.push(filter("eventType", "IN", o.eventType.map((x: string) => x.toUpperCase())));
         common.push(...extraFilters(o));
         // campaignId is only filterable on child entity types; the campaign itself is matched by entityId.
@@ -120,22 +125,39 @@ export function registerHistory(program: Command, deps: Deps): void {
           queries.push([...common, filter("entityType", "IN", types)]);
         }
         if (!queries.length) throw usageError("No entity types left to query", "with --campaign-id use Campaign, AdGroup, Keyword or NegativeKeyword");
-        const rows: any[] = [];
-        let truncated = false;
-        let totalCount = 0;
-        let single: Pagination | undefined;
-        for (const filters of queries) {
-          const body: Record<string, unknown> = { filters, options: { metadata: "latest" } };
-          if (o.sort?.length) body.sorting = o.sort.map(parseSort);
-          const page = await paginate(ctx.client, { path: "/change-history/query", body, pageMax: PAGE_MAX_ENTITY, ...listOpts(o, "entity") });
-          rows.push(...page.rows);
-          truncated ||= page.pagination.truncated;
-          totalCount += page.pagination.totalCount ?? page.rows.length;
-          single = page.pagination;
+        const sorting = (o.sort ?? []).map(parseSort);
+        const bodyOf = (filters: Filter[]): Record<string, unknown> => ({ filters, options: { metadata: "latest" }, ...(sorting.length ? { sorting } : {}) });
+        let page: { rows: any[]; pagination: Pagination };
+        if (queries.length === 1) {
+          page = await paginate(ctx.client, { path: "/change-history/query", body: bodyOf(queries[0]!), pageMax: PAGE_MAX_ENTITY, ...listOpts(o, "entity") }) as { rows: any[]; pagination: Pagination };
+        } else {
+          // Several queries: fetch each from the start, merge newest first, then apply --offset and --limit once.
+          const lo = listOpts(o, "entity");
+          const want = lo.all ? lo.maxItems : lo.offset + lo.limit;
+          const merged: any[] = [];
+          let capped = false;
+          for (const filters of queries) {
+            const p = await paginate(ctx.client, { path: "/change-history/query", body: bodyOf(filters), pageMax: PAGE_MAX_ENTITY, limit: want, all: false, offset: 0 });
+            merged.push(...p.rows);
+            capped ||= p.pagination.truncated;
+          }
+          const order = sorting.length ? sorting : [{ field: "eventTime", order: "DESC" as const }];
+          merged.sort((a, b) => {
+            for (const k of order) {
+              const x = a?.[k.field];
+              const y = b?.[k.field];
+              const c = typeof x === "number" && typeof y === "number" ? x - y : String(x ?? "").localeCompare(String(y ?? ""));
+              if (c) return k.order === "DESC" ? -c : c;
+            }
+            return 0;
+          });
+          const take = lo.all ? lo.maxItems : lo.limit;
+          const rows = merged.slice(lo.offset, lo.offset + take);
+          const next = lo.offset + rows.length;
+          const truncated = capped || next < merged.length;
+          page = { rows, pagination: { offset: lo.offset, returned: rows.length, truncated, ...(truncated ? { nextOffset: next } : {}) } };
         }
-        if (queries.length > 1) rows.sort((a, b) => String(b.eventTime).localeCompare(String(a.eventTime)));
-        const page = { rows, pagination: queries.length === 1 && single ? single : { offset: o.offset ?? 0, returned: rows.length, totalCount, truncated } };
-        ctx.out.emit({ result: page.rows, pagination: page.pagination, cli: { eventTime: { from: start, to: end }, timeZone: "UTC", entityTypes: types } }, [
+        ctx.out.emit({ result: page.rows, pagination: page.pagination, cli: { eventTime: { from: start, to: end, toInclusive: true }, timeZone: "UTC", entityTypes: types } }, [
           { header: "eventTime", path: "eventTime" },
           { header: "eventType", path: "eventType" },
           { header: "entityType", path: "entityType" },

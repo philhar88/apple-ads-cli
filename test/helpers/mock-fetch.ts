@@ -23,9 +23,17 @@ export interface Mock {
   fetch: typeof fetch;
   calls: Call[];
   unmatched: Call[];
-  /** Calls other than GETs and /query reads. */
+  /** Calls other than GETs, token exchanges and known /query reads. */
   writes(): Call[];
 }
+
+/** Known read-only POST /query endpoints; any other non-GET call counts as a write. */
+const READ_PATHS = [
+  /^\/(campaigns|adgroups|keywords|negative-keywords|ads|creatives|product-pages|shared-budgets|change-history)\/query$/,
+  /^\/(eligibilities\/apps|suggestions\/keywords|insights\/apps\/impression-share)\/query$/,
+  /^\/reports\/apps\/(campaigns|adgroups|keywords|searchterms|ads)\/query$/,
+  /^\/apps\/\d+\/locale-details\/query$/,
+];
 
 export function mockFetch(routes: Record<string, Route>): Mock {
   const calls: Call[] = [];
@@ -71,6 +79,6 @@ export function mockFetch(routes: Record<string, Route>): Mock {
     fetch: f as typeof fetch,
     calls,
     unmatched,
-    writes: () => calls.filter((c) => c.method !== "GET" && !/\/query$/.test(c.path) && !c.path.startsWith("appleid.apple.com")),
+    writes: () => calls.filter((c) => c.method !== "GET" && !c.path.startsWith("appleid.apple.com") && !(c.method === "POST" && READ_PATHS.some((re) => re.test(c.path)))),
   };
 }

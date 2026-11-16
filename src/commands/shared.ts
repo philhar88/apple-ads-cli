@@ -60,29 +60,30 @@ export function checkIds(ids: string[], name = "ID"): string[] {
   return ids;
 }
 
-export function addListFlags(cmd: Command, kind: "entity" | "report"): Command {
+/** Shared list flags. `sort`, and `fields`/`deleted` (entity lists only), can be left off where the endpoint does not support them. */
+export function addListFlags(cmd: Command, kind: "entity" | "report", opts: { fields?: boolean; deleted?: boolean; sort?: boolean } = {}): Command {
   const def = kind === "entity" ? DEFAULT_LIMIT_ENTITY : DEFAULT_LIMIT_REPORT;
   cmd
     .option("--limit <n>", `maximum rows to return (default ${def})`, intArg("--limit"))
     .option("--all", "follow every page (up to --max-items)")
     .option("--max-items <n>", `cap for --all (default ${DEFAULT_MAX_ITEMS})`, intArg("--max-items"))
-    .option("--offset <n>", "start at this row", intArg("--offset"), 0)
-    .option("--sort <field[:ASC|DESC]>", "sort order (repeatable)", collect)
+    .option("--offset <n>", "start at this row", intArg("--offset"), 0);
+  if (opts.sort !== false) cmd.option("--sort <field[:ASC|DESC]>", "sort order (repeatable)", collect);
+  cmd
     .option("--filter <field:OPERATOR[:v1,v2]>", "extra filter (repeatable), e.g. status:EQUALS:ENABLED", collect);
-  if (kind === "entity") {
-    cmd.option("--fields <a,b>", "only return these fields (id is always added)");
-    cmd.option("--deleted", "list deleted entities instead (filter deleted EQUALS true)");
-  }
+  if (kind === "entity" && opts.fields !== false) cmd.option("--fields <a,b>", "only return these fields (id is always added)");
+  if (kind === "entity" && opts.deleted !== false) cmd.option("--deleted", "list deleted entities instead (filter deleted EQUALS true)");
   return cmd;
 }
 
-export function addWriteFlags(cmd: Command, opts: { data?: boolean; destructive?: boolean } = {}): Command {
+export function addWriteFlags(cmd: Command, opts: { data?: boolean; destructive?: boolean; money?: boolean } = {}): Command {
   cmd.option("--dry-run", "print the exact request and send nothing").option("--confirm", "send the change (without it the plan prints and the command exits 6)");
   if (opts.data !== false) {
     cmd.option("--data <json>", "JSON object merged over the body the flags build (flags win)");
     cmd.option("--file <path>", "read that JSON object from a file ('-' for stdin)");
   }
   if (opts.destructive) cmd.option("--force-delete", "required with --confirm for deletes");
+  if (opts.money) cmd.option("--allow-large", "send bids above maxBid (default 10.00) or daily budgets above maxDailyBudget (default 1000.00)");
   return cmd;
 }
 
@@ -173,19 +174,28 @@ export function deepMerge(base: Record<string, unknown>, top: Record<string, unk
   return out;
 }
 
-export function statusFields(e: any) {
+/** id, name/text and the status fields, plus `extra` fields (e.g. the bid a write changed). */
+export function statusFields(e: any, extra?: unknown) {
   if (!e || typeof e !== "object") return e;
   const o: Record<string, unknown> = { id: e.id };
-  for (const k of ["name", "text", "status", "systemStatus", "displayStatus", "systemStatusReasons", "systemStatusLimitingReasons", "deleted"]) if (e[k] !== undefined) o[k] = e[k];
+  for (const k of ["name", "text", ...(Array.isArray(extra) ? (extra as string[]) : []), "status", "systemStatus", "displayStatus", "systemStatusReasons", "systemStatusLimitingReasons", "deleted"]) if (e[k] !== undefined) o[k] = e[k];
   return o;
 }
+
+/** Fields a re-read keeps so `after` shows what a write changed. */
+export const CHANGED_FIELDS: Record<string, string[]> = {
+  keyword: ["matchType", "bid"],
+  negative: ["matchType"],
+  adGroup: ["bidStrategy", "automatedKeywordsOptIn", "endTime"],
+  ad: ["creativeId"],
+};
 
 /** Re-reads entities; a 404 is reported as gone. */
 export async function reread(ctx: Ctx, res: Resource, ids: string[]): Promise<unknown[]> {
   const out = [];
   for (const id of ids) {
     try {
-      out.push(statusFields(await getOne(ctx, res, id)));
+      out.push(statusFields(await getOne(ctx, res, id), CHANGED_FIELDS[res.type]));
     } catch (e) {
       if (e instanceof CliError && e.exitCode === 4) out.push({ id: Number(id), gone: true });
       else throw e;

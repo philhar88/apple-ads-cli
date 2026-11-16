@@ -2,6 +2,7 @@ import { createPrivateKey, sign, type KeyObject } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { AUDIENCE, CLIENT_SECRET_TTL_S } from "../constants.js";
 import { authError } from "../errors.js";
+import { isKeyContent } from "../config.js";
 
 export interface SecretInput {
   clientId: string;
@@ -19,6 +20,7 @@ export function b64url(input: Buffer | string): string {
 
 /** Reads the key file and checks it is an EC P-256 private key. The PEM is not kept. */
 export function loadPrivateKey(path: string): KeyObject {
+  if (isKeyContent(path)) throw authError("The private key setting holds key contents, not a file path", "save the key to a file with mode 600 and set the path instead", "KEY_IS_CONTENT");
   if (!existsSync(path)) throw authError(`Private key file not found: ${path}`, "check privateKeyPath in the profile", "KEY_NOT_FOUND");
   let key: KeyObject;
   try {

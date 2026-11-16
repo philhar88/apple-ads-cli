@@ -40,10 +40,10 @@ Each row has `metadata` (the entity, plus any groupBy values) and `totalMetrics`
 - Installs: `tapInstalls` (installs within 30 days of a tap), `viewInstalls` (within 1 day of a view), `totalInstalls`, `tapNewDownloads`, `tapRedownloads`, `totalNewDownloads`, `totalRedownloads`.
 - Rates and cost per install: `tapInstallRate` (tapInstalls ÷ taps), `tapInstallCPI` (spend ÷ tapInstalls), `totalAvgCPI`, `totalInstallRate`.
 - Money is `{"amount":"12.40","currency":"USD"}`. Rates are fractions: 0.042 means 4.2%.
-- `--metrics a,b` limits the fields returned.
+- `--metrics a,b` limits the fields returned. Missing count metrics are filled with 0 only for the metrics you asked for (all count metrics when `--metrics` is not given).
 - Sorting defaults to `localSpend:DESC`; `--sort taps:DESC` changes it.
 
-CPA is not a field. Compute it as `localSpend ÷ tapInstalls` and say that you computed it.
+CPA (cost per install) is `tapInstallCPI` (tap-through) or `totalAvgCPI` (tap and view). If you divide spend by installs yourself, for example over summed rows, say so.
 
 ## What the CLI normalises
 

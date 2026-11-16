@@ -5,7 +5,7 @@ import { runPlan } from "../mutate.js";
 import { parseAmount } from "../money.js";
 import { buildQuery, filter, type Filter } from "../query.js";
 import { RESOURCES } from "../resources.js";
-import { budgetCeilings, budgetReason, combine, countriesReason, createReason, endTimeReason, nameReason, reason, type Reason } from "../spend.js";
+import { budgetCeilings, budgetReason, combine, countriesReason, createReason, endTimeReason, nameReason, reason, overlayReasons, type Reason } from "../spend.js";
 import { nowApiDateTime, toApiDateTime } from "../time.js";
 import { addListFlags, addWriteFlags, deepMerge, doc, getOne, idArg, listEntities, readOverlay, registerDelete, registerGet, registerStatus, statusFields } from "./shared.js";
 
@@ -83,12 +83,12 @@ export function registerCampaigns(program: Command, deps: Deps): void {
 
   const list = addListFlags(g.command("list").description("List campaigns"), "entity")
     .option("--status <status>", "ENABLED or PAUSED")
-    .option("--name <text>", "name contains this text (LIKE)")
+    .option("--name <text>", "name contains this text, any case (LIKE, ignoreCase)")
     .action(
       act(deps, async (ctx, o) => {
         const f: Filter[] = [];
         if (o.status) f.push(filter("status", "EQUALS", o.status.toUpperCase()));
-        if (o.name) f.push(filter("name", "LIKE", o.name));
+        if (o.name) f.push({ ...filter("name", "LIKE", o.name), ignoreCase: true });
         await listEntities(ctx, R, o, f, withBudget(ctx));
       }),
     );
@@ -110,7 +110,7 @@ export function registerCampaigns(program: Command, deps: Deps): void {
     .option("--currency <code>", "default: the ad account currency")
     .option("--status <status>", "PAUSED (default) or ENABLED")
     .option("--allow-duplicate", "create even if a campaign with this name exists");
-  addWriteFlags(create);
+  addWriteFlags(create, { money: true });
   create.action(
     act(deps, async (ctx, o) => {
       const flagsBody = buildCampaignBody({
@@ -170,7 +170,7 @@ export function registerCampaigns(program: Command, deps: Deps): void {
     .option("--start <date>", "new start (UTC)")
     .option("--end <date>", "new end (UTC), or 'none' to remove it")
     .option("--countries <codes>", "replace the country list, e.g. US,GB");
-  addWriteFlags(update);
+  addWriteFlags(update, { money: true });
   update.action(
     act(deps, async (ctx, o, [id]) => {
       const before = await getOne(ctx, R, id!);
@@ -209,7 +209,7 @@ export function registerCampaigns(program: Command, deps: Deps): void {
       }
       const overlay = await readOverlay(ctx, o);
       const body = overlay ? deepMerge(overlay, patch) : patch;
-      if (overlay) for (const k of Object.keys(overlay)) if (!(k in patch)) reasons.push(reason("unknown", `campaign ${id} field ${k} set from --data/--file`));
+      if (overlay) reasons.push(...overlayReasons("campaign", id!, before, overlay, patch));
       if (!Object.keys(body).length) throw usageError("Nothing to change", "pass --name, --daily-budget, --start, --end, --countries or --data");
       await runPlan(
         ctx,

@@ -37,3 +37,8 @@ export function isNoContextPath(method: string, path: string): boolean {
   }
   return false;
 }
+
+// Sanity ceilings in the account currency; writes above them need --allow-large.
+// Set maxBid / maxDailyBudget in the profile for currencies with larger units (for example JPY).
+export const DEFAULT_MAX_BID = "10.00";
+export const DEFAULT_MAX_DAILY_BUDGET = "1000.00";

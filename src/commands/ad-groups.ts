@@ -5,9 +5,9 @@ import { runPlan } from "../mutate.js";
 import { parseAmount } from "../money.js";
 import { filter, type Filter } from "../query.js";
 import { RESOURCES } from "../resources.js";
-import { bidReason, combine, createReason, endTimeReason, nameReason, reason, searchMatchReason, type Reason } from "../spend.js";
+import { bidReason, combine, createReason, endTimeReason, nameReason, reason, searchMatchReason, overlayReasons, type Reason } from "../spend.js";
 import { nowApiDateTime, toApiDateTime } from "../time.js";
-import { addListFlags, addWriteFlags, deepMerge, doc, getOne, idArg, listEntities, readOverlay, registerDelete, registerGet, registerStatus, statusFields } from "./shared.js";
+import { addListFlags, addWriteFlags, CHANGED_FIELDS, deepMerge, doc, getOne, idArg, listEntities, readOverlay, registerDelete, registerGet, registerStatus, statusFields } from "./shared.js";
 
 const R = RESOURCES.adGroups;
 
@@ -60,13 +60,13 @@ export function registerAdGroups(program: Command, deps: Deps): void {
   const list = addListFlags(g.command("list").description("List ad groups"), "entity")
     .option("--campaign-id <id>", "only this campaign's ad groups", idArg("--campaign-id"))
     .option("--status <status>", "ENABLED or PAUSED")
-    .option("--name <text>", "name contains this text (LIKE)")
+    .option("--name <text>", "name contains this text, any case (LIKE, ignoreCase)")
     .action(
       act(deps, async (ctx, o) => {
         const f: Filter[] = [];
         if (o.campaignId) f.push(filter("campaignId", "EQUALS", o.campaignId));
         if (o.status) f.push(filter("status", "EQUALS", o.status.toUpperCase()));
-        if (o.name) f.push(filter("name", "LIKE", o.name));
+        if (o.name) f.push({ ...filter("name", "LIKE", o.name), ignoreCase: true });
         await listEntities(ctx, R, o, f);
       }),
     );
@@ -85,7 +85,7 @@ export function registerAdGroups(program: Command, deps: Deps): void {
     .option("--end <date>", "end (UTC)")
     .option("--status <status>", "PAUSED (default) or ENABLED")
     .option("--allow-duplicate", "create even if the campaign has an ad group with this name");
-  addWriteFlags(create);
+  addWriteFlags(create, { money: true });
   create.action(
     act(deps, async (ctx, o) => {
       const campaign = await getOne(ctx, RESOURCES.campaigns, o.campaignId);
@@ -132,7 +132,7 @@ export function registerAdGroups(program: Command, deps: Deps): void {
     .option("--name <name>", "new name")
     .option("--search-match <on|off>", "turn Search Match on or off")
     .option("--end <date>", "new end (UTC), or 'none'");
-  addWriteFlags(update);
+  addWriteFlags(update, { money: true });
   update.action(
     act(deps, async (ctx, o, [id]) => {
       const before = await getOne(ctx, R, id!);
@@ -165,7 +165,7 @@ export function registerAdGroups(program: Command, deps: Deps): void {
       }
       const overlay = await readOverlay(ctx, o);
       const body = overlay ? deepMerge(overlay, patch) : patch;
-      if (overlay) for (const k of Object.keys(overlay)) if (!(k in patch)) reasons.push(reason("unknown", `ad group ${id} field ${k} set from --data/--file`));
+      if (overlay) reasons.push(...overlayReasons("ad group", id!, before, overlay, patch));
       if (!Object.keys(body).length) throw usageError("Nothing to change", "pass --bid, --name, --search-match, --end or --data");
       await runPlan(
         ctx,
@@ -173,10 +173,10 @@ export function registerAdGroups(program: Command, deps: Deps): void {
           action: "ad-groups.update",
           steps: [{ method: "PUT", path: `${R.path}/${id}`, body }],
           targets: [{ type: "adGroup", id, campaignId: String(before.campaignId) }],
-          before: statusFields(before),
+          before: statusFields(before, CHANGED_FIELDS.adGroup),
           changes,
           spend: combine(reasons),
-          verify: async () => [statusFields(await getOne(ctx, R, id!))],
+          verify: async () => [statusFields(await getOne(ctx, R, id!), CHANGED_FIELDS.adGroup)],
           summary: `ad group ${id} updated`,
         },
         o,

@@ -128,3 +128,23 @@ export function negativeReason(n: number): Reason {
 }
 
 export { r as reason };
+
+/**
+ * Spend reasons for --data/--file keys that no flag set: status, Search Match, budget, bid, end date and
+ * countries are assessed like their flags; any other key is "unknown".
+ */
+export function overlayReasons(kind: "campaign" | "ad group", id: string, before: any, overlay: Record<string, any>, patch: Record<string, unknown>): Reason[] {
+  const out: Reason[] = [];
+  for (const k of Object.keys(overlay)) {
+    if (k in patch) continue;
+    const v = overlay[k];
+    if (k === "status" && typeof v === "string") out.push(statusReason(kind, id, v.toUpperCase()));
+    else if (k === "automatedKeywordsOptIn" && typeof v === "boolean") out.push(searchMatchReason(id, v));
+    else if (k === "dailyBudget" && v?.value?.amount !== undefined) out.push(budgetReason(id, before?.dailyBudget?.value?.amount, String(v.value.amount)));
+    else if (k === "bidStrategy" && v?.bid?.amount !== undefined) out.push(bidReason(kind, id, before?.bidStrategy?.bid?.amount, String(v.bid.amount)));
+    else if (k === "endTime" && (v === null || typeof v === "string")) out.push(endTimeReason(kind, id, before?.endTime, v));
+    else if (k === "targeting" && Array.isArray(v?.countryOrRegion?.include)) out.push(countriesReason(id, before?.targeting?.countryOrRegion?.include ?? [], v.countryOrRegion.include));
+    else out.push(r("unknown", `${kind} ${id} field ${k} set from --data/--file`));
+  }
+  return out;
+}

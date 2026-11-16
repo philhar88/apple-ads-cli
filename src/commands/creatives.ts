@@ -24,7 +24,7 @@ export function buildCreativeBody(name: string, adamId: string, productPageId?: 
 }
 
 /** A creative belongs to no campaign; its targets are the campaigns of ads that use it. */
-async function creativeTargets(ctx: Ctx, id: string): Promise<Target[]> {
+export async function creativeTargets(ctx: Ctx, id: string): Promise<Target[]> {
   const ads = await paginate(ctx.client, { path: RESOURCES.ads.queryPath, body: { filters: [filter("creativeId", "EQUALS", id)] }, pageMax: PAGE_MAX_ENTITY, limit: 0, all: true, offset: 0 });
   const t: Target[] = [{ type: "creative", id }];
   for (const a of ads.rows as any[]) t.push({ type: "ad", id: String(a.id), campaignId: String(a.campaignId) });

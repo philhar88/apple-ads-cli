@@ -8,7 +8,7 @@ import { parseAmount } from "../money.js";
 import { filter, type Filter } from "../query.js";
 import { RESOURCES } from "../resources.js";
 import { bidReason, combine, createReason, reason, type Reason } from "../spend.js";
-import { addListFlags, addWriteFlags, checkIds, doc, getOne, idArg, listEntities, reread, registerGet, statusFields } from "./shared.js";
+import { addListFlags, addWriteFlags, CHANGED_FIELDS, checkIds, doc, getOne, idArg, listEntities, reread, registerGet, statusFields } from "./shared.js";
 import { bulkSteps, existingKeys, keywordInputs, matchType, registerBulkDelete, registerBulkStatus } from "./keywords-common.js";
 
 const R = RESOURCES.keywords;
@@ -45,7 +45,7 @@ export function registerKeywords(program: Command, deps: Deps): void {
     .option("--bid <amount>", "max CPT bid for these keywords (default: the ad group bid)")
     .option("--status <status>", "ENABLED (default) or PAUSED")
     .option("--allow-duplicate", "send even if text and match type exist");
-  addWriteFlags(add, { data: false });
+  addWriteFlags(add, { data: false, money: true });
   add.action(
     act(deps, async (ctx, o) => {
       const inputs = await keywordInputs(ctx, o);
@@ -81,7 +81,7 @@ export function registerKeywords(program: Command, deps: Deps): void {
           steps: items.length ? bulkSteps(`${R.path}/bulk-create`, items) : [],
           targets: [{ type: "keyword", campaignId: String(adGroup.campaignId) }],
           existing,
-          spend: combine(items.length ? [createReason(`${items.length} keyword(s)`, String(o.status ?? "ENABLED").toUpperCase(), running)] : []),
+          spend: combine(items.length ? [createReason(`${items.length} keyword(s)`, items.some((d) => (d.status ?? "ENABLED") === "ENABLED") ? "ENABLED" : "PAUSED", running)] : []),
           verify: async (res) => reread(ctx, R, res.filter((r) => r.ok && r.id).map((r) => String(r.id))),
           summary: `${items.length} keyword(s) added to ad group ${o.adGroupId}`,
         },
@@ -102,7 +102,7 @@ export function registerKeywords(program: Command, deps: Deps): void {
     .argument("[ids...]", "keyword ID(s)")
     .option("--bid <amount>", "new max CPT bid for the given IDs")
     .option("--file <path>", "JSON array of {id, bid?, status?}");
-  addWriteFlags(update, { data: false });
+  addWriteFlags(update, { data: false, money: true });
   update.action(
     act(deps, async (ctx, o, ids) => {
       let wanted: Array<{ id: string; bid?: string; status?: string }>;
@@ -123,7 +123,7 @@ export function registerKeywords(program: Command, deps: Deps): void {
       const items: Record<string, unknown>[] = [];
       for (const w of wanted) {
         const k = await getOne(ctx, R, w.id);
-        before.push(statusFields({ ...k, bid: k.bid }));
+        before.push(statusFields(k, CHANGED_FIELDS.keyword));
         targets.push({ type: "keyword", id: w.id, campaignId: k.campaignId !== undefined ? String(k.campaignId) : undefined });
         const data: Record<string, unknown> = { id: Number(w.id) };
         if (w.bid !== undefined) {

@@ -123,8 +123,9 @@ export async function paginate(client: Client, opts: PageOpts): Promise<PageResu
   let offset = opts.offset;
   let totalCount: number | undefined;
   let first: any;
-  // "short" = Apple returned fewer rows than asked: the end, even if totalCount says otherwise
-  // (the ads report counts rows it never returns).
+  // A short page is the end only when there is no totalCount. When totalCount says rows remain, ask again:
+  // some endpoints cap pageSize on the server, and the ads report counts rows it never returns (that next
+  // page comes back empty, which ends the loop).
   let stop: "short" | "total" | "limit" = "limit";
   while (rows.length < target) {
     const pageSize = Math.min(opts.pageMax, target - rows.length);
@@ -137,12 +138,16 @@ export async function paginate(client: Client, opts: PageOpts): Promise<PageResu
     if (typeof tc === "number") totalCount = tc;
     rows.push(...page);
     offset += page.length;
-    if (page.length < pageSize) {
+    if (page.length === 0) {
       stop = "short";
       break;
     }
     if (totalCount !== undefined && offset >= totalCount) {
       stop = "total";
+      break;
+    }
+    if (page.length < pageSize && totalCount === undefined) {
+      stop = "short";
       break;
     }
   }

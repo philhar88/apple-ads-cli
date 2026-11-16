@@ -9,6 +9,7 @@
   "files": [
     "dist",
     "skills",
+    "!skills/*/references/local.md",
     "README.md",
     "LICENSE",
     "NOTICE",

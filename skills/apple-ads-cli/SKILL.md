@@ -13,7 +13,7 @@ If `references/local.md` exists next to this file, read it before anything else.
 
 1. Run `apple-ads-cli --version` and expect `2.x`. Version 1.x is a different tool on a retired API; stop and say so.
 2. Run `apple-ads-cli auth doctor`. If a check has `"ok": false`, follow its `hint`.
-3. Never ask for, print or paste a token or private key. To set up, ask the user to run `apple-ads-cli auth setup` with the path to their key file.
+3. Never ask for, print or paste a token or private key. To set up, ask the user to run `apple-ads-cli auth setup --client-id SEARCHADS.… --team-id SEARCHADS.… --key-id KEY_ID --private-key PATH` (values from Apple Ads > Account Settings > API; `PATH` is the key file, never the key itself).
 
 ## Hard rules
 
@@ -56,8 +56,8 @@ If `references/local.md` exists next to this file, read it before anything else.
 2. Run the write with `--dry-run`.
 3. Show the user `plan.steps` (method, URL, body), `spend.effect`, `spend.reasons` and, for campaigns, `spend.ceilings`. Point out any reason marked `largeStep`.
 4. On approval, run the same command with `--confirm` in place of `--dry-run`. Deletes also need `--force-delete`.
-5. Read `after` in the output and report each entity's `displayStatus`.
-6. If a bulk write fails part-way, list the parent before retrying. Items that already exist are skipped and shown under `existing`.
+5. Read `after` in the output: check that the changed field (bid, budget, status, end date) matches the plan, and report each entity's `displayStatus`.
+6. If a bulk write fails part-way (`PARTIAL_FAILURE` or `BULK_UNCONFIRMED`), list the parent before retrying. Items that already exist are skipped and shown under `existing`.
 
 ## Weekly review
 
@@ -103,10 +103,12 @@ Errors are JSON on stderr: `{"error":{"code","message","hint"}}`. Follow `hint` 
 | 6 `CONFIRM_REQUIRED` | Show the plan and ask for approval. |
 | 6 `PROTECTED` | Tell the user the campaign is protected and stop. |
 | 6 `FORCE_DELETE_REQUIRED` | Confirm the delete with the user, then add `--force-delete`. |
+| 6 `ABOVE_CEILING` | The bid or budget is above the sanity ceiling. Check for a typo (60 for 0.60); add `--allow-large` only if the user confirms the amount. |
 | "adGroupId or campaignId condition is required" | Add `--campaign-id` or `--ad-group-id`. |
 | "not valid for granularity" | Shorten the range or change `--granularity` (`schema reports`). |
 | "Operator … is not supported" | Check `apple-ads-cli schema filters <resource>`. |
 | `PARTIAL_FAILURE` | Read `results[].error`, fix those items, and re-run (existing items are skipped). |
+| `BULK_UNCONFIRMED` | Apple did not confirm every item. List the parent and check each item before retrying. |
 
 ## References
 

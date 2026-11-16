@@ -50,9 +50,15 @@ export interface ClientDeps {
   log?: Logger;
 }
 
+/** The path that fetch actually sends, relative to /v1 (query string and fragment removed, dots resolved). */
+export function sentPathname(path: string): string {
+  return new URL(buildUrl(path)).pathname.replace(/^\/v1(?=\/|$)/, "") || "/";
+}
+
+/** Classifies by the URL that is actually sent, so a fragment or dot segment cannot turn a write into a read. */
 export function isReadRequest(method: string, path: string): boolean {
   const m = method.toUpperCase();
-  return m === "GET" || (m === "POST" && /\/query$/.test(path.split("?")[0]!));
+  return m === "GET" || (m === "POST" && /\/query$/.test(sentPathname(path)));
 }
 
 export function buildUrl(path: string, query?: Record<string, QueryValue>): string {
@@ -94,6 +100,9 @@ export class Client {
     const context = opts.context ?? (isNoContextPath(method, path) ? "none" : "account");
     const retry = opts.retry ?? (isReadRequest(method, path) ? "read" : "write");
     const url = buildUrl(path, opts.query);
+    if (opts.body !== undefined && (method === "GET" || method === "HEAD")) {
+      throw new CliError({ exitCode: ExitCode.USAGE, code: "USAGE", message: `${method} requests cannot have a body`, hint: "drop --data/--file, or use POST for /query endpoints" });
+    }
     const fam = family(path);
     const log = this.deps.log;
     let refreshed = false;

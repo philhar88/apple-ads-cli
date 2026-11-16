@@ -2,7 +2,7 @@ import { existsSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Command } from "commander";
 import { act, Ctx, type Deps } from "../context.js";
-import { cacheDir, defaultConfigPath, expandHome, legacyCredentialsPath, loadConfig, looksLikePem, resolveSettings, writeConfig, type ProfileConfig } from "../config.js";
+import { cacheDir, defaultConfigPath, expandHome, isKeyContent, legacyCredentialsPath, loadConfig, resolveSettings, writeConfig, type ProfileConfig } from "../config.js";
 import { keyFileIsLoose, loadPrivateKey, makeClientSecret } from "../auth/jwt.js";
 import { clearTokenCache, TokenProvider } from "../auth/token.js";
 import { authError, toCliError, usageError } from "../errors.js";
@@ -40,7 +40,7 @@ export function registerAuth(program: Command, deps: Deps): void {
     .option("--no-verify", "write the profile without calling Apple");
   setup.action(
     act(deps, async (ctx, o) => {
-      if (looksLikePem(o.privateKey)) throw usageError("--private-key takes a file path, not the key contents", "save the key to a file with mode 600 and pass its path");
+      if (isKeyContent(o.privateKey)) throw usageError("--private-key takes a file path, not the key contents", "save the key to a file with mode 600 and pass its path");
       const keyPath = resolve(expandHome(o.privateKey, ctx.env));
       loadPrivateKey(keyPath);
       if (keyFileIsLoose(keyPath)) ctx.out.note(`key file ${keyPath} is readable by group or others; run: chmod 600 ${keyPath}`);

@@ -17,8 +17,9 @@ export interface GuardSettings {
  */
 export function assertNotProtected(targets: Target[], g: GuardSettings, reduceOnly: boolean): void {
   if (!g.protectedCampaignIds.length) return;
-  const set = new Set(g.protectedCampaignIds.map(String));
-  const hits = targets.filter((t) => (t.campaignId && set.has(String(t.campaignId))) || (t.type === "campaign" && t.id && set.has(String(t.id))));
+  const set = new Set(g.protectedCampaignIds.map((x) => canonicalId(String(x))));
+  const has = (v: unknown) => v !== undefined && v !== null && v !== "" && set.has(canonicalId(String(v)));
+  const hits = targets.filter((t) => has(t.campaignId) || (t.type === "campaign" && has(t.id)));
   if (!hits.length) return;
   if (reduceOnly && g.allowPauseProtected) return;
   const which = [...new Set(hits.map((t) => t.campaignId ?? t.id))].join(", ");
@@ -29,16 +30,25 @@ export function assertNotProtected(targets: Target[], g: GuardSettings, reduceOn
   );
 }
 
+/** Numeric IDs without leading zeros, so "0555" and "555" compare equal. Other strings are unchanged. */
+export function canonicalId(v: string): string {
+  return /^\d+$/.test(v) ? v.replace(/^0+(?=\d)/, "") : v;
+}
+
 /** For the raw `api` command: finds protected IDs in the path or anywhere in the body. */
 export function scanForProtected(path: string, body: unknown, ids: string[]): string[] {
   if (!ids.length) return [];
-  const set = new Set(ids.map(String));
+  const set = new Set(ids.map((x) => canonicalId(String(x))));
   const found = new Set<string>();
-  for (const seg of path.split(/[/?&=,]/)) if (set.has(seg)) found.add(seg);
+  const check = (v: string) => {
+    const c = canonicalId(v.trim());
+    if (set.has(c)) found.add(c);
+  };
+  for (const seg of path.split(/[/?&=,#]/)) check(seg);
   const walk = (v: unknown): void => {
     if (v === null || v === undefined) return;
     if (typeof v === "string" || typeof v === "number") {
-      if (set.has(String(v))) found.add(String(v));
+      check(String(v));
       return;
     }
     if (Array.isArray(v)) v.forEach(walk);
