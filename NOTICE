@@ -1,0 +1,10 @@
+apple-ads-cli
+Copyright Benn Huang and contributors.
+
+This product is a modified version of apple-ads-cli by Benn Huang
+(https://github.com/Bin-Huang/apple-ads-cli), licensed under the Apache
+License, Version 2.0.
+
+Version 2.0.0 was rewritten in 2026 for the Apple Ads Platform API v1.
+Every source file was replaced; the package name, command name, skill name
+and licence were kept. See CHANGELOG.md for the changes.
