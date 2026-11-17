@@ -27,7 +27,7 @@ Every command prints one JSON document on stdout. Add `--output table` for a tab
 | `--debug` | Requests and responses on stderr, secrets redacted |
 | `--timeout S` | Request timeout in seconds (default 60) |
 
-List flags, on every `list`, report and insight: `--limit N` (default 1000; 5000 for reports), `--all`, `--max-items N`, `--offset N`, `--sort field[:ASC|DESC]` (repeatable), `--filter field:OPERATOR[:v1,v2]` (repeatable; `IS_NULL` takes no value), and on entity lists `--fields a,b` and `--deleted`. `product-pages list` has no `--deleted`; `insights keyword-suggestions` has no `--sort`, `--fields` or `--deleted` (Apple sorts nothing there).
+List flags, on every `list`, report and insight: `--limit N` (default 1000; 5000 for reports), `--all`, `--max-items N`, `--offset N`, `--sort field[:ASC|DESC]` (repeatable), `--filter field:OPERATOR[:v1,v2]` (repeatable; `IS_NULL` takes no value), and on entity lists `--fields a,b` and `--deleted`. `product-pages list` has no `--deleted`; `history list` has no `--fields` or `--deleted`; `insights keyword-suggestions` has no `--sort`, `--fields` or `--deleted` (Apple sorts nothing there).
 
 Write flags:
 

@@ -8,19 +8,24 @@ Released from the fork [philhar88/apple-ads-cli](https://github.com/philhar88/ap
 
 ### Breaking changes
 
-- Every command name and flag changed. Commands are now `<noun> <verb>`, for example `campaigns list` and `reports keywords`.
-- 1.x credentials no longer work. Run `auth setup` with the API key's client ID, team ID, key ID and private key path. The CLI now signs its own client secret and refreshes the access token.
+- Most command names and flags changed. Most commands are now `<noun> <verb>`, for example `campaigns list` and `reports keywords`.
+- Output is `{"result": …, "pagination": …}`. 1.x printed Apple's `data` value. Report rows are in `result.rows`.
+- Errors are `{"error": {"code", "message", "hint", …}}` with exit codes 1 to 6. 1.x printed `{"error": "message"}` and exited 1.
+- Output is compact when piped and indented in a terminal. `--pretty` indents.
+- Reports default to totals for the last 7 days in the ad account's time zone. 1.x defaulted to DAILY rows in UTC and required both dates. `--start-date` and `--end-date` are now `--start` and `--end`.
+- `--limit` defaults to 1000 (5000 on reports) instead of 20.
+- The 1.x `credentials.json` is not read. `APPLE_ADS_ACCESS_TOKEN` still works. Run `auth setup` with the API key's client ID, team ID, key ID and private key path. The CLI now signs its own client secret and refreshes the access token.
 - The ad account ID replaces the org ID in the request context.
 - Node.js 22 or later is required.
-- Removed: `--format compact` (pipe the JSON instead) and `--credentials` (use `--config` or `--profile`).
+- Removed: `--format` and `--credentials` (use `--config` or `--profile`).
 
 ### Added
 
-- Writes: create, update, pause, resume and delete for campaigns, ad groups, ads and creatives; bulk add, update, pause, resume and delete for keywords and negative keywords. Every write supports `--dry-run`, needs `--confirm`, reports its spend effect and re-reads the result.
+- Writes: create, update, pause, resume and delete for campaigns, ad groups and ads; create and delete for creatives; bulk add, update, pause, resume and delete for keywords; bulk add, pause, resume and delete for negative keywords. Every write supports `--dry-run`, needs `--confirm`, reports its spend effect and re-reads the result.
 - Protected campaigns per profile (`protectedCampaignIds`): writes to them, or anything under them, are refused with exit 6.
-- Reports for campaigns, ad groups, keywords, search terms and ads, with local checks for spans, granularity and time zone. Reports always send a sort order (the 1.x report commands failed without one).
+- Reports for campaigns, ad groups, keywords, search terms and ads, with local checks for spans, granularity and time zone. Reports always send a sort order (in testing, the 1.x report requests returned 400 without one).
 - `apps`, `product-pages`, `geo`, `insights`, `history`, `schema` and a raw `api` command.
-- Pagination on every list: `--limit`, `--all`, `--offset`, and a `truncated` flag in every result.
+- `--all` and `--max-items` on lists and reports, and a `truncated` flag in every result.
 - Documented exit codes (0-6), JSON errors with hints, retries with backoff, and rate-limit pacing.
 - `--output table`.
 - A rewritten agent skill with reference files.
@@ -42,6 +47,16 @@ Released from the fork [philhar88/apple-ads-cli](https://github.com/philhar88/ap
 - `auth setup` leaves the mode of a user-chosen config directory alone.
 - The npm package never includes `skills/*/references/local.md`.
 
+### After review (17 November 2026)
+
+- The migration notes now list the changes to the JSON output, errors and exit codes, report defaults, the date flags, `--limit` and the environment variables.
+- `-V` prints the version again, as in 1.x. `--help` names the repository.
+- Exit 6 lists `ABOVE_CEILING` in the README and in `schema exit-codes`.
+- README delete examples show `--force-delete`.
+- The skill no longer points to tools outside this repository.
+- Tests remove their temporary home directories. `package-lock.json` is ignored.
+- Offered to the original repository as [Bin-Huang/apple-ads-cli#2](https://github.com/Bin-Huang/apple-ads-cli/pull/2).
+
 ### Migrating from 1.x
 
 | 1.x | 2.0 |
@@ -50,6 +65,7 @@ Released from the fork [philhar88/apple-ads-cli](https://github.com/philhar88/ap
 | pre-made access token in `credentials.json` | `auth setup` with the key path; tokens refresh automatically |
 | org ID | ad account ID |
 | `acl` | `access` |
+| `me` | `me` (unchanged) |
 | `campaigns` | `campaigns list` |
 | `campaign <id>` | `campaigns get <id>` |
 | `adgroups <campaignId>` | `ad-groups list --campaign-id <id>` |
@@ -58,15 +74,18 @@ Released from the fork [philhar88/apple-ads-cli](https://github.com/philhar88/ap
 | `campaign-negative-keywords <campaignId>` | `negatives list --campaign-id <id> --campaign-level` |
 | `negative-keywords <campaignId> <adGroupId>` | `negatives list --ad-group-id <id>` |
 | `search-apps <query>` | `apps search --query <query>` |
+| `search-apps --return-own-apps` | `apps search --owned` |
 | `app-eligibility <adamId>` | `apps eligibility <adamId>` |
 | `app <adamId>` | `apps get <adamId>` |
 | `budget-orders` / `budget-order <id>` | `budget-orders list` / `budget-orders get <id>` |
 | `report <campaignId>` | `reports campaigns --campaign-id <id>` |
 | `report-adgroups <campaignId>` | `reports ad-groups --campaign-id <id>` |
 | `report-keywords <campaignId>` | `reports keywords --campaign-id <id>` |
-| `--format compact` | removed |
+| `--start-date` / `--end-date` | `--start` / `--end`, or `--last Nd` |
 | `--return-records-with-no-metrics` | `--include-empty` |
-| `--credentials <file>` | `--config <file>` / `--profile <name>` |
+| `--format json` / `--format compact` | removed; `--pretty` indents |
+| `--credentials <file>` | `--config <file>` / `--profile <name>` (a new file format) |
+| `APPLE_ADS_ORG_ID` | `APPLE_ADS_AD_ACCOUNT_ID` |
 
 The old `~/.config/apple-ads-cli/credentials.json` is not read. `auth status` and `auth doctor` warn when it exists; you can delete it after running `auth setup`. The same API key works for both APIs, and campaign IDs are unchanged.
 

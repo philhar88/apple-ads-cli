@@ -15,13 +15,15 @@ It reads accounts, campaigns, ad groups, keywords, negative keywords, creatives,
 - Every request uses the Platform API v1 (`https://api.ads.apple.com/v1`) and the ad account ID.
 - The CLI signs in with your API key and refreshes its own access token. 1.x needed a token that you made by hand, which expired after an hour.
 - It can change things, not only read them. Every write has `--dry-run` and needs `--confirm`, and a profile can protect campaigns from writes. See [Safety model](#safety-model).
-- Reports work. The 1.x report commands failed with HTTP 400.
-- Every command name and flag changed. See [Migrating from 1.x](#migrating-from-1x).
+- Reports send a sort order. In testing, the 1.x report requests returned HTTP 400 without one.
+- Most command names and flags changed, and so did the shape of the JSON output. See [Migrating from 1.x](#migrating-from-1x).
 - It has tests, documented exit codes and a rewritten agent skill.
 
 **What stayed the same.** The package name, the command name, the skill name and the Apache-2.0 licence. The same Apple Ads API key works, and campaign IDs carry over.
 
 **Not on npm.** The npm package `apple-ads-cli` is the original 1.x. Install this fork from source, as shown in [Install](#install).
+
+**Offered to the original.** This rewrite is open as a pull request on the original repository: [Bin-Huang/apple-ads-cli#2](https://github.com/Bin-Huang/apple-ads-cli/pull/2). If it is merged and released, the npm package gets 2.0 and this fork keeps following Apple's API.
 
 ## Install
 
@@ -54,7 +56,7 @@ To use the agent skill, copy `skills/apple-ads-cli/` into your agent's skills fo
    chmod 600 private-key.pem
    ```
 
-2. In Apple Ads, open **Account Settings > API**, upload `public-key.pem`, and copy the client ID, team ID and key ID. The API user needs a role such as API Campaign Manager (to change campaigns) or API Read Only.
+2. In [Apple Ads](https://ads.apple.com/app-store/), open **Account Settings > API**, upload `public-key.pem`, and copy the client ID, team ID and key ID. The API user needs a role such as API Campaign Manager (to change campaigns) or API Read Only.
 
 3. Save a profile. The CLI stores the key's **path**, never its contents:
 
@@ -98,7 +100,7 @@ Commands follow `apple-ads-cli <noun> <verb>`. Every command's `--help` shows it
 
 **Global flags:** `--profile`, `--ad-account-id`, `--output json|table`, `--pretty`, `--debug` (requests on stderr, secrets redacted), `--config`, `--timeout <seconds>`.
 
-**List flags:** `--limit`, `--all`, `--max-items`, `--offset`, `--sort field[:ASC|DESC]`, `--filter field:OPERATOR[:v1,v2]`, `--fields a,b`, `--deleted`. Every list reports `pagination.truncated`, so results are never cut off silently.
+**List flags:** `--limit`, `--all`, `--max-items`, `--offset`, `--sort field[:ASC|DESC]`, `--filter field:OPERATOR[:v1,v2]`, and on entity lists `--fields a,b` and `--deleted`. Every list reports `pagination.truncated`, so results are never cut off silently.
 
 **Write flags:** `--dry-run`, `--confirm`, `--data <json>` or `--file <path>` (merged under the flags), and `--force-delete` for deletes.
 
@@ -144,7 +146,8 @@ apple-ads-cli ad-groups list --campaign-id 111111111
 apple-ads-cli ad-groups get 222222222
 apple-ads-cli ad-groups create --campaign-id 111111111 --name "Example Group" --bid 0.60 --dry-run
 apple-ads-cli ad-groups update 222222222 --bid 0.70 --search-match off --dry-run
-apple-ads-cli ad-groups pause|resume|delete 222222222 --confirm
+apple-ads-cli ad-groups pause|resume 222222222 --confirm
+apple-ads-cli ad-groups delete 222222222 --confirm --force-delete
 
 apple-ads-cli creatives list [--status VALID]
 apple-ads-cli creatives get 666666
@@ -156,7 +159,8 @@ apple-ads-cli ads list --campaign-id 111111111
 apple-ads-cli ads get 555555555
 apple-ads-cli ads create --ad-group-id 222222222 --creative-id 666666 --name "Example Ad" --dry-run
 apple-ads-cli ads update 555555555 --name "Example Ad 2" --dry-run
-apple-ads-cli ads pause|resume|delete 555555555 --confirm
+apple-ads-cli ads pause|resume 555555555 --confirm
+apple-ads-cli ads delete 555555555 --confirm --force-delete
 
 apple-ads-cli budget-orders list
 apple-ads-cli budget-orders get 777777777
@@ -171,12 +175,14 @@ apple-ads-cli keywords add --ad-group-id 222222222 --text "example term" --text 
 apple-ads-cli keywords add --ad-group-id 222222222 --file keywords.csv --bid 0.50 --confirm
 apple-ads-cli keywords update 333333333 --bid 0.55 --dry-run
 apple-ads-cli keywords update --file updates.json --confirm      # [{"id":…, "bid":"0.55"}]
-apple-ads-cli keywords pause|resume|delete 333333333 --confirm
+apple-ads-cli keywords pause|resume 333333333 --confirm
+apple-ads-cli keywords delete 333333333 --confirm --force-delete
 
 apple-ads-cli negatives list --campaign-id 111111111 [--campaign-level]
 apple-ads-cli negatives list --ad-group-id 222222222
 apple-ads-cli negatives add --campaign-id 111111111 --text "free example" --dry-run
-apple-ads-cli negatives pause|resume|delete 444444444 --confirm
+apple-ads-cli negatives pause|resume 444444444 --confirm
+apple-ads-cli negatives delete 444444444 --confirm --force-delete
 ```
 
 Keyword files are a JSON array (strings or `{text, matchType?, bid?}`) or CSV (`text[,matchType[,bid]]`). Bulk requests go in chunks of 100 with partial success allowed. Keywords and negatives that already exist are skipped and listed under `existing`.
@@ -200,7 +206,10 @@ apple-ads-cli history get Campaign.111111111.TXN_ID
 
 Report rules the CLI checks before sending:
 
-- `--last Nd` is the N full days before today in the ad account's time zone. Today is excluded.
+- `--last Nd` is the N full days before today in the ad account's time zone. Today is excluded. The default is `--last 7d`.
+- Without `--granularity`, a report returns totals for the range.
+- Dates are in the ad account's time zone (`ORTZ`). Pass `--time-zone UTC` for UTC.
+- `--group-by` takes `deviceClass`, `ageRange`, `gender`, `countryCode`, `adminArea`, `locality` or `countryOrRegion` on campaign and ad group reports, `deviceClass` or `countryOrRegion` on keyword and search term reports, and `countryOrRegion` on ad reports.
 - Campaign reports filter on campaign `id`. The other reports need `--campaign-id`.
 - Spans: HOURLY up to 7 days, DAILY up to 90, WEEKLY 14 or more, MONTHLY 90 or more. No HOURLY for ads or search terms, and search terms are ORTZ only.
 - An empty result becomes `rows: []`, missing requested counts become 0, and Apple's placeholder "Default Ad" rows are dropped (counted in `pagination.droppedDefaultAds`) unless you pass `--include-default-ads`.
@@ -243,7 +252,7 @@ apple-ads-cli api PUT /adgroups/222222222 --data '{"name":"Example"}' --dry-run
 | 3 | Auth or config error |
 | 4 | Not found |
 | 5 | Rate limited or transient (retries ran out) |
-| 6 | Refused for safety: `CONFIRM_REQUIRED`, `PROTECTED` or `FORCE_DELETE_REQUIRED` |
+| 6 | Refused for safety: `CONFIRM_REQUIRED`, `PROTECTED`, `FORCE_DELETE_REQUIRED` or `ABOVE_CEILING` |
 
 Errors print to stderr as `{"error":{"code","message","hint","status","requestId","details"}}`.
 
@@ -256,9 +265,11 @@ Version 1.x used the Campaign Management API v5 with a pre-made access token and
 | 1.x | 2.0 |
 |---|---|
 | `credentials.json` with an access token | `auth setup` with the key path |
-| `--credentials <file>` | `--config <file>` or `--profile <name>` |
-| org ID | ad account ID (`--ad-account-id`) |
+| `--credentials <file>` | `--config <file>` or `--profile <name>`. The config file has a new format, written by `auth setup` |
+| `APPLE_ADS_ACCESS_TOKEN` and `APPLE_ADS_ORG_ID` | `APPLE_ADS_ACCESS_TOKEN` still works, with `APPLE_ADS_AD_ACCOUNT_ID`. It is used before the key sign-in and is not refreshed, so unset it after `auth setup` |
+| org ID | ad account ID (`--ad-account-id`). `access` lists both |
 | `acl` | `access` |
+| `me` | `me` (unchanged) |
 | `campaigns` / `campaign <id>` | `campaigns list` / `campaigns get <id>` |
 | `adgroups <campaignId>` | `ad-groups list --campaign-id <id>` |
 | `ads <campaignId> <adGroupId>` | `ads list --ad-group-id <id>` |
@@ -266,12 +277,19 @@ Version 1.x used the Campaign Management API v5 with a pre-made access token and
 | `campaign-negative-keywords <campaignId>` | `negatives list --campaign-id <id> --campaign-level` |
 | `negative-keywords <campaignId> <adGroupId>` | `negatives list --ad-group-id <id>` |
 | `search-apps <query>` / `app-eligibility <adamId>` / `app <adamId>` | `apps search --query <q>` / `apps eligibility <adamId>` / `apps get <adamId>` |
+| `search-apps --return-own-apps` | `apps search --owned` |
 | `budget-orders` / `budget-order <id>` | `budget-orders list` / `budget-orders get <id>` |
 | `report <campaignId>` | `reports campaigns --campaign-id <id>` |
 | `report-adgroups <campaignId>` | `reports ad-groups --campaign-id <id>` |
 | `report-keywords <campaignId>` | `reports keywords --campaign-id <id>` |
-| `--format compact` | removed; pipe the JSON instead |
-| `--return-records-with-no-metrics` | `--include-empty` |
+| `--start-date` / `--end-date` (required) | `--start` / `--end`, or `--last Nd`. The default is the last 7 days |
+| reports default to `--granularity DAILY` | totals unless you pass `--granularity` |
+| report dates in UTC | the ad account's time zone. Pass `--time-zone UTC` for the 1.x behaviour |
+| `--return-records-with-no-metrics` | `--include-empty` (not with `--group-by`) |
+| `--limit` defaults to 20 | `--limit` defaults to 1000 (5000 on reports). `--all` follows every page |
+| `--format json` / `--format compact` | removed. Output is compact when piped and indented in a terminal. `--pretty` indents |
+| output is Apple's `data` value | `{"result": …, "pagination": …}`. Report rows are in `result.rows` |
+| errors are `{"error": "message"}` with exit 1 | `{"error": {"code", "message", "hint", …}}` with [exit codes](#exit-codes) 1 to 6 |
 
 See [CHANGELOG.md](CHANGELOG.md) for details.
 

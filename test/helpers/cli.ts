@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { run } from "../../src/cli.js";
@@ -7,8 +7,16 @@ import { mockFetch, type Mock, type Route } from "./mock-fetch.js";
 export const NOW = Date.parse("2026-11-16T20:00:00.000Z");
 export const ACCOUNT = { id: 123456789, name: "Example", orgId: 987654321, timezone: "America/Los_Angeles", currency: "USD", paymentModel: "PAYG", systemStatus: "ACTIVE", systemStatusReasons: [] };
 
+const homes: string[] = [];
+process.on("exit", () => {
+  for (const home of homes) rmSync(home, { recursive: true, force: true });
+});
+
+/** A new empty home directory, removed when the test process exits. */
 export function tempHome(): string {
-  return mkdtempSync(join(tmpdir(), "aac-test-"));
+  const home = mkdtempSync(join(tmpdir(), "aac-test-"));
+  homes.push(home);
+  return home;
 }
 
 export interface RunResult {

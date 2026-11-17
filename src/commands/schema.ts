@@ -13,7 +13,7 @@ export const EXIT_CODES = [
   { code: 3, meaning: "Auth or config error (no profile, key unreadable, token exchange failed, 401/403)" },
   { code: 4, meaning: "Not found (404 / ENTITY_NOT_FOUND)" },
   { code: 5, meaning: "Rate limited or transient: retries ran out on 429, 5xx, timeout or network error" },
-  { code: 6, meaning: "Refused for safety: CONFIRM_REQUIRED, PROTECTED or FORCE_DELETE_REQUIRED" },
+  { code: 6, meaning: "Refused for safety: CONFIRM_REQUIRED, PROTECTED, FORCE_DELETE_REQUIRED or ABOVE_CEILING" },
 ];
 
 function tree(cmd: Command, prefix: string[] = []): unknown[] {

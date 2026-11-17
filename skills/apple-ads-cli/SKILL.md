@@ -1,6 +1,6 @@
 ---
 name: apple-ads-cli
-description: Manages and analyses Apple Ads (formerly Apple Search Ads) App Store campaigns through apple-ads-cli on the Apple Ads Platform API v1. Covers account and access checks, campaigns, ad groups, keywords, negative keywords, creatives, ads and custom product pages, plus campaign, ad group, keyword, search term and ad reports, impression share and change history. Writes (create, pause, resume, bids, budgets, keywords) go through a dry-run and confirm protocol with a spend assessment. Use when the user asks about Apple Ads or Apple Search Ads spend, CPT, CPA, installs, taps, impressions, search terms, keyword bids, negative keywords, budget pacing or a weekly ads review, or wants to create or change an Apple Ads campaign. Not for App Store Connect metadata, builds or TestFlight (use the asc skills).
+description: Manages and analyses Apple Ads (formerly Apple Search Ads) App Store campaigns through apple-ads-cli on the Apple Ads Platform API v1. Covers account and access checks, campaigns, ad groups, keywords, negative keywords, creatives, ads and custom product pages, plus campaign, ad group, keyword, search term and ad reports, impression share and change history. Writes (create, pause, resume, bids, budgets, keywords) go through a dry-run and confirm protocol with a spend assessment. Use when the user asks about Apple Ads or Apple Search Ads spend, CPT, CPA, installs, taps, impressions, search terms, keyword bids, negative keywords, budget pacing or a weekly ads review, or wants to create or change an Apple Ads campaign. Not for App Store Connect metadata, builds or TestFlight.
 ---
 
 # Apple Ads with apple-ads-cli
@@ -115,4 +115,3 @@ Errors are JSON on stderr: `{"error":{"code","message","hint"}}`. Follow `hint` 
 - `references/commands.md`: every command with flags and an example. Read when a command or flag is not in the table above.
 - `references/reports.md`: report kinds, required filters, metrics, groupBy, span rules, Low Volume and provisional days. Read before any report question that is not a simple total.
 - `references/playbook.md`: account structure, match types, negatives, bids, budgets and the 10-step weekly review. Read for reviews and recommendations.
-- For App Store Connect work (metadata, builds, TestFlight), use the `asc` skills. `asc ads` covers the same Platform API when this CLI is not installed.

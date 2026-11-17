@@ -23,7 +23,7 @@ export function buildProgram(deps: Deps): Command {
   program
     .name("apple-ads-cli")
     .description(`Apple Ads (App Store) campaigns, keywords and reports on the ${API_NAME}. JSON on stdout; errors as JSON on stderr.`)
-    .version(VERSION, "--version", "print the version")
+    .version(VERSION, "-V, --version", "print the version")
     .option("--profile <name>", "config profile (env APPLE_ADS_PROFILE)")
     .option("--ad-account-id <id>", "ad account ID (env APPLE_ADS_AD_ACCOUNT_ID)")
     .option("--output <format>", "json (default) or table")
@@ -40,6 +40,7 @@ export function buildProgram(deps: Deps): Command {
         "",
         "Writes never send without --confirm; use --dry-run to see the exact request first.",
         "Docs: https://developer.apple.com/documentation/apple-ads-platform-api",
+        "Repository: https://github.com/philhar88/apple-ads-cli",
         EXIT_CODES_HELP,
       ].join("\n"),
     );

@@ -21,6 +21,7 @@ test("--help and --version work offline", () => {
   const v = run(["--version"]);
   assert.equal(v.status, 0);
   assert.match(v.stdout.trim(), /^2\.\d+\.\d+$/);
+  assert.equal(run(["-V"]).stdout, v.stdout);
   const leaf = run(["reports", "keywords", "--help"]);
   assert.equal(leaf.status, 0);
   assert.match(leaf.stdout, /Endpoint: POST \/v1\/reports\/apps\/keywords\/query/);
